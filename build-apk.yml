@@ -1,0 +1,64 @@
+name: Build DramaRush APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Expo CLI and EAS CLI
+        run: npm install -g expo-cli eas-cli
+
+      - name: Build APK with EAS
+        run: |
+          eas build \
+            --platform android \
+            --profile preview \
+            --non-interactive \
+            --local
+        env:
+          EXPO_NO_TELEMETRY: 1
+
+      - name: Find APK
+        id: find_apk
+        run: |
+          APK=$(find . -type f -name "*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "No APK was generated."
+            exit 1
+          fi
+
+          echo "Found APK: $APK"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DramaRush-APK
+          path: ${{ steps.find_apk.outputs.apk }}
+          retention-days: 30
