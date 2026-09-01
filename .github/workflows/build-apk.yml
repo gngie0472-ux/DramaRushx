@@ -8,10 +8,6 @@ jobs:
     name: Build Android APK
     runs-on: ubuntu-latest
 
-    env:
-      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
-      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,56 +15,90 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm install
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+      # Create the Expo environment file from GitHub Secrets.
+      # This is required so the Supabase settings are included
+      # in the JavaScript bundle that goes inside the APK.
+      - name: Configure Supabase environment
+        env:
+          SUPABASE_URL_1: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL_2: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY_1: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_KEY_2: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          SUPABASE_URL="$SUPABASE_URL_1"
+          if [ -z "$SUPABASE_URL" ]; then
+            SUPABASE_URL="$SUPABASE_URL_2"
+          fi
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+          SUPABASE_KEY="$SUPABASE_KEY_1"
+          if [ -z "$SUPABASE_KEY" ]; then
+            SUPABASE_KEY="$SUPABASE_KEY_2"
+          fi
+
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "ERROR: Supabase URL secret is missing."
+            exit 1
+          fi
+
+          if [ -z "$SUPABASE_KEY" ]; then
+            echo "ERROR: Supabase anon key secret is missing."
+            exit 1
+          fi
+
+          {
+            echo "EXPO_PUBLIC_SUPABASE_URL=$SUPABASE_URL"
+            echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_KEY"
+          } > .env
+
+          echo "Supabase environment configured successfully."
 
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
-      - name: Create or link Expo project
-        run: eas init --account pyouri --non-interactive
+      - name: Build Android APK
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Build APK with EAS
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
+          if [ -z "$EXPO_PUBLIC_SUPABASE_URL" ]; then
+            export EXPO_PUBLIC_SUPABASE_URL="$SUPABASE_URL"
+          fi
+
+          if [ -z "$EXPO_PUBLIC_SUPABASE_ANON_KEY" ]; then
+            export EXPO_PUBLIC_SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
+          fi
+
           eas build \
             --platform android \
             --profile preview \
             --local \
-            --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EXPO_NO_TELEMETRY: '1'
+            --non-interactive \
+            --output ./DramaRush.apk
 
-      - name: Find APK
-        id: find_apk
-        shell: bash
+      - name: Verify APK
         run: |
-          APK=$(find . -type f -name "*.apk" | head -n 1)
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: No APK was generated."
+          if [ ! -f "./DramaRush.apk" ]; then
+            echo "ERROR: APK was not created."
             exit 1
           fi
 
-          echo "Found APK: $APK"
-          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          ls -lh ./DramaRush.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: DramaRush-APK
-          path: ${{ steps.find_apk.outputs.apk }}
-          retention-days: 30
+          path: ./DramaRush.apk
+          if-no-files-found: error
+
+      - name: Remove temporary environment file
+        if: always()
+        run: rm -f .env
