@@ -16,14 +16,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
 
       - name: Install dependencies
         run: npm install
 
       # Create the Expo environment file from GitHub Secrets.
-      # This is required so the Supabase settings are included
-      # in the JavaScript bundle that goes inside the APK.
+      # This makes the Supabase settings available during the APK build.
       - name: Configure Supabase environment
         env:
           SUPABASE_URL_1: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
@@ -32,11 +30,13 @@ jobs:
           SUPABASE_KEY_2: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           SUPABASE_URL="$SUPABASE_URL_1"
+
           if [ -z "$SUPABASE_URL" ]; then
             SUPABASE_URL="$SUPABASE_URL_2"
           fi
 
           SUPABASE_KEY="$SUPABASE_KEY_1"
+
           if [ -z "$SUPABASE_KEY" ]; then
             SUPABASE_KEY="$SUPABASE_KEY_2"
           fi
