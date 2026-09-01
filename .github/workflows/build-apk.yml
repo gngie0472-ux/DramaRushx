@@ -65,11 +65,18 @@ jobs:
         run: |
           if [ -z "$EXPO_TOKEN" ]; then
             echo "ERROR: EXPO_TOKEN secret is missing."
-            echo "Create an Expo access token and add it to GitHub Secrets as EXPO_TOKEN."
             exit 1
           fi
 
           echo "Expo token is configured."
+
+      - name: Configure EAS project
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas init \
+            --account pyouri \
+            --non-interactive
 
       - name: Build Android APK
         env:
