@@ -15,8 +15,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: '22'
 
       - name: Install dependencies
         run: npm install
@@ -30,8 +29,8 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Expo and EAS CLI
-        run: npm install -g eas-cli
+      - name: Install EAS CLI
+        run: npm install --global eas-cli
 
       - name: Create or link Expo project
         run: eas init --account pyouri --non-interactive
@@ -43,19 +42,20 @@ jobs:
           eas build \
             --platform android \
             --profile preview \
-            --non-interactive \
-            --local
+            --local \
+            --non-interactive
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EXPO_NO_TELEMETRY: 1
+          EXPO_NO_TELEMETRY: '1'
 
       - name: Find APK
         id: find_apk
+        shell: bash
         run: |
           APK=$(find . -type f -name "*.apk" | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "No APK was generated."
+            echo "ERROR: No APK was generated."
             exit 1
           fi
 
