@@ -40,6 +40,7 @@ jobs:
             --non-interactive \
             --local
         env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_NO_TELEMETRY: 1
 
       - name: Find APK
