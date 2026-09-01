@@ -25,7 +25,14 @@ import {
 } from 'lucide-react-native';
 
 export default function PlayerScreen() {
-  const { episodeId } = useLocalSearchParams<{ episodeId: string }>();
+  const params = useLocalSearchParams<{
+    episodeId?: string | string[];
+  }>();
+
+  const episodeId = Array.isArray(params.episodeId)
+    ? params.episodeId[0]
+    : params.episodeId;
+
   const { session } = useAuth();
 
   const [episode, setEpisode] = useState<Episode | null>(null);
@@ -44,9 +51,8 @@ export default function PlayerScreen() {
   const [currentPosition, setCurrentPosition] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  const [unlockedEpisodeIds, setUnlockedEpisodeIds] = useState<Set<string>>(
-    new Set()
-  );
+  const [unlockedEpisodeIds, setUnlockedEpisodeIds] =
+    useState<Set<string>>(new Set());
 
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -55,17 +61,56 @@ export default function PlayerScreen() {
 
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const makeUuid = useCallback(() => {
-    const cryptoObject = globalThis.crypto as Crypto | undefined;
+  const mountedRef = useRef(true);
+  const loadingVideoRef = useRef(false);
 
-    if (cryptoObject?.randomUUID) {
+  const player = useVideoPlayer(null, (p) => {
+    p.loop = false;
+    p.muted = false;
+  });
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+
+      if (controlsTimer.current) {
+        clearTimeout(controlsTimer.current);
+        controlsTimer.current = null;
+      }
+
+      try {
+        player.pause();
+      } catch {
+        // Ignore cleanup errors.
+      }
+    };
+  }, [player]);
+
+  /*
+   * ============================================================
+   * UUID
+   * ============================================================
+   */
+
+  const makeUuid = useCallback(() => {
+    const cryptoObject = globalThis.crypto as
+      | Crypto
+      | undefined;
+
+    if (
+      cryptoObject &&
+      typeof cryptoObject.randomUUID === 'function'
+    ) {
       return cryptoObject.randomUUID();
     }
 
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(
       /[xy]/g,
       (character) => {
-        const random = (Math.random() * 16) | 0;
+        const random = Math.floor(Math.random() * 16);
+
         const value =
           character === 'x'
             ? random
@@ -76,81 +121,183 @@ export default function PlayerScreen() {
     );
   }, []);
 
-  const player = useVideoPlayer(null, (p) => {
-    p.loop = false;
-    p.muted = false;
-  });
+  /*
+   * ============================================================
+   * GET SECURE VIDEO URL
+   * ============================================================
+   */
 
   const fetchVideoUrl = useCallback(
     async (id: string) => {
       try {
-        const { data, error: functionError } =
-          await supabase.functions.invoke('get-video-url', {
+        if (!id) {
+          console.error('fetchVideoUrl: missing episode id');
+          return null;
+        }
+
+        const {
+          data,
+          error: functionError,
+        } = await supabase.functions.invoke(
+          'get-video-url',
+          {
             body: {
               episodeId: id,
             },
-          });
+          }
+        );
 
         if (functionError) {
           console.error(
-            'get-video-url function error:',
+            'get-video-url error:',
             functionError
           );
+
           return null;
         }
 
-        if (!data?.url) {
+        if (!data) {
           console.error(
-            'get-video-url returned no URL:',
+            'get-video-url returned empty response'
+          );
+
+          return null;
+        }
+
+        if (
+          typeof data.url !== 'string' ||
+          data.url.length === 0
+        ) {
+          console.error(
+            'get-video-url did not return a valid URL:',
             data
           );
+
           return null;
         }
 
-        return data.url as string;
+        return data.url;
       } catch (err) {
         console.error(
-          'Failed to invoke get-video-url:',
+          'fetchVideoUrl exception:',
           err
         );
+
         return null;
       }
     },
     []
   );
 
+  /*
+   * ============================================================
+   * LOAD VIDEO
+   * ============================================================
+   */
+
   const loadVideo = useCallback(
     async (id: string) => {
-      const videoUrl = await fetchVideoUrl(id);
-
-      if (!videoUrl) {
-        setError(true);
+      if (!id) {
         return false;
       }
 
+      if (loadingVideoRef.current) {
+        return false;
+      }
+
+      loadingVideoRef.current = true;
+
       try {
+        const videoUrl = await fetchVideoUrl(id);
+
+        if (!videoUrl) {
+          if (mountedRef.current) {
+            setIsPlaying(false);
+            setError(true);
+          }
+
+          return false;
+        }
+
+        if (!mountedRef.current) {
+          return false;
+        }
+
+        /*
+         * Stop previous video before replacing it.
+         */
+
+        try {
+          player.pause();
+        } catch {
+          // Ignore.
+        }
+
+        /*
+         * Reset UI state.
+         */
+
+        setCurrentPosition(0);
+        setDuration(0);
+        setIsPlaying(false);
+
+        /*
+         * Load the secure URL.
+         */
+
         player.replace(videoUrl);
+
+        /*
+         * Start playback.
+         */
+
         player.play();
-        setIsPlaying(true);
+
+        if (mountedRef.current) {
+          setIsPlaying(true);
+          setError(false);
+        }
+
         return true;
       } catch (err) {
-        console.error('Video player error:', err);
-        setError(true);
+        console.error(
+          'loadVideo error:',
+          err
+        );
+
+        if (mountedRef.current) {
+          setIsPlaying(false);
+          setError(true);
+        }
+
         return false;
+      } finally {
+        loadingVideoRef.current = false;
       }
     },
     [fetchVideoUrl, player]
   );
 
+  /*
+   * ============================================================
+   * FETCH EPISODE DATA
+   * ============================================================
+   */
+
   const fetchData = useCallback(async () => {
+    if (!episodeId) {
+      setError(true);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(false);
 
     try {
-      if (!episodeId) {
-        setError(true);
-        return;
-      }
+      /*
+       * Get episode.
+       */
 
       const episodeColumns =
         'id, series_id, episode_number, title, description, thumbnail_url, video_path, duration, is_free, coin_price, view_count, created_at';
@@ -165,19 +312,36 @@ export default function PlayerScreen() {
         .maybeSingle();
 
       if (epError) {
-        console.error('Episode error:', epError);
+        console.error(
+          'Episode query error:',
+          epError
+        );
+
         setError(true);
         return;
       }
 
       if (!epData) {
+        console.error(
+          'Episode not found:',
+          episodeId
+        );
+
         setError(true);
         return;
       }
 
       const ep = epData as Episode;
 
+      if (!mountedRef.current) {
+        return;
+      }
+
       setEpisode(ep);
+
+      /*
+       * Get series and all episodes.
+       */
 
       const [
         seriesRes,
@@ -200,50 +364,64 @@ export default function PlayerScreen() {
 
       if (seriesRes.error) {
         console.error(
-          'Series error:',
+          'Series query error:',
           seriesRes.error
         );
       }
 
       if (episodesRes.error) {
         console.error(
-          'Episodes error:',
+          'Episodes query error:',
           episodesRes.error
         );
       }
 
-      if (seriesRes.data) {
-        setSeries(seriesRes.data as Series);
+      const currentSeries =
+        seriesRes.data
+          ? (seriesRes.data as Series)
+          : null;
+
+      const currentEpisodes =
+        (episodesRes.data || []) as Episode[];
+
+      if (!mountedRef.current) {
+        return;
       }
 
-      setAllEpisodes(
-        (episodesRes.data as Episode[]) || []
-      );
+      setSeries(currentSeries);
+      setAllEpisodes(currentEpisodes);
 
       /*
-       * Determine access.
+       * ========================================================
+       * ACCESS CONTROL
+       * ========================================================
        *
        * Free episode
        * OR free series
        * OR active subscription
-       * OR purchased/unlocked episode
+       * OR unlocked episode
        */
 
       const seriesIsFree =
-        !!seriesRes.data &&
-        !!(seriesRes.data as Series).is_free;
+        currentSeries?.is_free === true;
 
-      const episodeIsFree = !!ep.is_free;
+      const episodeIsFree =
+        ep.is_free === true;
 
       const isFree =
-        episodeIsFree || seriesIsFree;
+        episodeIsFree ||
+        seriesIsFree;
 
-      let unlocked = isFree;
       let subscribed = false;
 
-      const userUnlockIds = new Set<string>();
+      const userUnlockIds =
+        new Set<string>();
 
-      if (session?.user) {
+      if (session?.user?.id) {
+        /*
+         * Check subscription and unlocked episodes.
+         */
+
         const [
           subscriptionResult,
           unlockResult,
@@ -269,30 +447,37 @@ export default function PlayerScreen() {
         }
 
         subscribed =
-          !!subscriptionResult.data;
+          subscriptionResult.data === true;
 
         if (unlockResult.error) {
           console.error(
-            'Unlock check error:',
+            'Unlocked episodes query error:',
             unlockResult.error
           );
         }
 
-        (
-          unlockResult.data || []
-        ).forEach((row: any) => {
-          if (row?.episode_id) {
+        for (
+          const row of unlockResult.data || []
+        ) {
+          if (
+            row &&
+            typeof row.episode_id ===
+              'string'
+          ) {
             userUnlockIds.add(
               row.episode_id
             );
           }
-        });
+        }
       }
 
-      if (!isFree) {
-        unlocked =
-          subscribed ||
-          userUnlockIds.has(ep.id);
+      const unlocked =
+        isFree ||
+        subscribed ||
+        userUnlockIds.has(ep.id);
+
+      if (!mountedRef.current) {
+        return;
       }
 
       setUnlockedEpisodeIds(
@@ -307,6 +492,10 @@ export default function PlayerScreen() {
         unlocked
       );
 
+      /*
+       * New view session.
+       */
+
       viewRecordedRef.current =
         false;
 
@@ -314,15 +503,16 @@ export default function PlayerScreen() {
         makeUuid();
 
       /*
-       * Load protected video only
-       * after entitlement is confirmed.
+       * ========================================================
+       * LOAD VIDEO ONLY IF AUTHORIZED
+       * ========================================================
        */
 
       if (unlocked) {
-        const success =
+        const videoLoaded =
           await loadVideo(ep.id);
 
-        if (!success) {
+        if (!videoLoaded) {
           return;
         }
 
@@ -330,13 +520,13 @@ export default function PlayerScreen() {
          * Restore watch position.
          */
 
-        if (session?.user) {
+        if (session?.user?.id) {
           const {
             data: historyData,
             error: historyError,
           } = await supabase
             .from('watch_history')
-            .select('position')
+            .select('position, duration')
             .eq(
               'user_id',
               session.user.id
@@ -349,7 +539,7 @@ export default function PlayerScreen() {
 
           if (historyError) {
             console.error(
-              'Watch history error:',
+              'Watch history query error:',
               historyError
             );
           }
@@ -360,12 +550,30 @@ export default function PlayerScreen() {
               'number' &&
             historyData.position > 0
           ) {
-            player.currentTime =
-              historyData.position;
+            /*
+             * Wait briefly so the player can
+             * initialize the media.
+             */
 
-            setCurrentPosition(
-              historyData.position
-            );
+            setTimeout(() => {
+              if (!mountedRef.current) {
+                return;
+              }
+
+              try {
+                player.currentTime =
+                  historyData.position;
+
+                setCurrentPosition(
+                  historyData.position
+                );
+              } catch (err) {
+                console.error(
+                  'Restore position error:',
+                  err
+                );
+              }
+            }, 500);
           }
         }
       }
@@ -375,38 +583,98 @@ export default function PlayerScreen() {
         err
       );
 
-      setError(true);
+      if (mountedRef.current) {
+        setError(true);
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [
     episodeId,
-    session,
-    player,
+    session?.user?.id,
     makeUuid,
     loadVideo,
+    player,
   ]);
+
+  /*
+   * Reload whenever episodeId changes.
+   */
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+
+    return () => {
+      try {
+        player.pause();
+      } catch {
+        // Ignore.
+      }
+    };
+  }, [fetchData, player]);
 
   /*
-   * Track playback position,
-   * views and watch history.
+   * ============================================================
+   * PLAYER STATUS LISTENER
+   * ============================================================
+   */
+
+  useEffect(() => {
+    const statusSubscription =
+      player.addListener(
+        'statusChange',
+        (event) => {
+          if (!mountedRef.current) {
+            return;
+          }
+
+          /*
+           * expo-video reports status changes.
+           * Keep UI synchronized where possible.
+           */
+
+          const status =
+            String(
+              (event as any)?.status ||
+                ''
+            ).toLowerCase();
+
+          if (
+            status.includes('error')
+          ) {
+            setIsPlaying(false);
+          }
+        }
+      );
+
+    return () => {
+      statusSubscription.remove();
+    };
+  }, [player]);
+
+  /*
+   * ============================================================
+   * PLAYBACK POSITION / VIEW TRACKING
+   * ============================================================
    */
 
   useEffect(() => {
     if (
       !isUnlocked ||
       !episode ||
-      !session?.user
+      !session?.user?.id
     ) {
       return;
     }
 
-    const interval = setInterval(
-      async () => {
+    const interval =
+      setInterval(async () => {
+        if (!mountedRef.current) {
+          return;
+        }
+
         try {
           const position =
             Number(player.currentTime) || 0;
@@ -423,9 +691,7 @@ export default function PlayerScreen() {
           );
 
           /*
-           * Count view after meaningful playback.
-           * 10% for short videos,
-           * maximum 30 seconds.
+           * Record a view after meaningful playback.
            */
 
           const threshold =
@@ -461,6 +727,14 @@ export default function PlayerScreen() {
                 'View recording error:',
                 viewError
               );
+
+              /*
+               * Allow another attempt if
+               * the database call failed.
+               */
+
+              viewRecordedRef.current =
+                false;
             }
           }
 
@@ -503,22 +777,48 @@ export default function PlayerScreen() {
             err
           );
         }
-      },
-      5000
-    );
+      }, 5000);
 
-    return () =>
+    return () => {
       clearInterval(interval);
+    };
   }, [
     isUnlocked,
     episode,
-    session,
+    session?.user?.id,
     player,
   ]);
 
   /*
-   * Automatically move to next episode
-   * when the current episode finishes.
+   * ============================================================
+   * PLAY / PAUSE LISTENER
+   * ============================================================
+   */
+
+  useEffect(() => {
+    const subscription =
+      player.addListener(
+        'playingChange',
+        (event) => {
+          if (!mountedRef.current) {
+            return;
+          }
+
+          setIsPlaying(
+            !!event.isPlaying
+          );
+        }
+      );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [player]);
+
+  /*
+   * ============================================================
+   * AUTO NEXT EPISODE
+   * ============================================================
    */
 
   useEffect(() => {
@@ -526,6 +826,10 @@ export default function PlayerScreen() {
       player.addListener(
         'playToEnd',
         () => {
+          if (!mountedRef.current) {
+            return;
+          }
+
           const currentIndex =
             allEpisodes.findIndex(
               (item) =>
@@ -534,28 +838,36 @@ export default function PlayerScreen() {
             );
 
           if (
-            currentIndex >= 0 &&
-            currentIndex <
+            currentIndex < 0 ||
+            currentIndex >=
               allEpisodes.length - 1
           ) {
-            const nextEp =
-              allEpisodes[
-                currentIndex + 1
-              ];
+            return;
+          }
 
-            const nextUnlocked =
-              nextEp.is_free ||
-              !!series?.is_free ||
-              hasSubscription ||
-              unlockedEpisodeIds.has(
-                nextEp.id
-              );
+          const nextEp =
+            allEpisodes[
+              currentIndex + 1
+            ];
 
-            if (nextUnlocked) {
-              router.replace(
-                `/player/${nextEp.id}`
-              );
-            }
+          const nextUnlocked =
+            nextEp.is_free === true ||
+            series?.is_free === true ||
+            hasSubscription ||
+            unlockedEpisodeIds.has(
+              nextEp.id
+            );
+
+          if (nextUnlocked) {
+            router.replace(
+              `/player/${nextEp.id}`
+            );
+          } else {
+            /*
+             * Stop at locked episode.
+             */
+
+            setIsPlaying(false);
           }
         }
       );
@@ -566,27 +878,27 @@ export default function PlayerScreen() {
   }, [
     player,
     allEpisodes,
-    episode,
+    episode?.id,
     hasSubscription,
     unlockedEpisodeIds,
-    series,
+    series?.is_free,
   ]);
 
   /*
-   * Unlock paid episode.
+   * ============================================================
+   * UNLOCK EPISODE
+   * ============================================================
    */
 
   const handleUnlock =
     useCallback(async () => {
-      if (!session?.user) {
+      if (!session?.user?.id) {
         Alert.alert(
           'Sign in required',
           'Please sign in to unlock episodes.'
         );
 
-        router.push(
-          '/auth/login'
-        );
+        router.push('/auth/login');
 
         return;
       }
@@ -603,23 +915,20 @@ export default function PlayerScreen() {
             text: 'Cancel',
             style: 'cancel',
           },
-
           {
             text: 'Unlock',
             onPress: async () => {
               try {
                 const {
                   data,
-                  error:
-                    unlockError,
-                } =
-                  await supabase.rpc(
-                    'unlock_episode',
-                    {
-                      p_episode_id:
-                        episode.id,
-                    }
-                  );
+                  error: unlockError,
+                } = await supabase.rpc(
+                  'unlock_episode',
+                  {
+                    p_episode_id:
+                      episode.id,
+                  }
+                );
 
                 if (unlockError) {
                   console.error(
@@ -629,16 +938,24 @@ export default function PlayerScreen() {
 
                   Alert.alert(
                     'Error',
-                    'Failed to unlock episode.'
+                    unlockError.message ||
+                      'Failed to unlock episode.'
                   );
 
                   return;
                 }
 
                 const result =
-                  data as any;
+                  data as
+                    | {
+                        success?: boolean;
+                        message?: string;
+                      }
+                    | null;
 
-                if (!result?.success) {
+                if (
+                  !result?.success
+                ) {
                   Alert.alert(
                     'Cannot unlock',
                     result?.message ||
@@ -649,12 +966,14 @@ export default function PlayerScreen() {
                 }
 
                 /*
-                 * Unlock succeeded.
+                 * Update local entitlement.
                  */
 
-                setIsUnlocked(
-                  true
-                );
+                if (!mountedRef.current) {
+                  return;
+                }
+
+                setIsUnlocked(true);
 
                 setUnlockedEpisodeIds(
                   (previous) => {
@@ -672,18 +991,18 @@ export default function PlayerScreen() {
                 );
 
                 /*
-                 * Get secure signed URL.
+                 * Load secure video.
                  */
 
-                const success =
+                const videoLoaded =
                   await loadVideo(
                     episode.id
                   );
 
-                if (!success) {
+                if (!videoLoaded) {
                   Alert.alert(
-                    'Error',
-                    'Episode unlocked, but the video could not be loaded.'
+                    'Video error',
+                    'Episode unlocked successfully, but the secure video could not be loaded.'
                   );
 
                   return;
@@ -709,21 +1028,23 @@ export default function PlayerScreen() {
         ]
       );
     }, [
-      session,
+      session?.user?.id,
       episode,
       loadVideo,
     ]);
 
   /*
-   * Navigate to another episode.
+   * ============================================================
+   * NAVIGATE TO EPISODE
+   * ============================================================
    */
 
   const goToEpisode =
     useCallback(
       (ep: Episode) => {
         const unlocked =
-          ep.is_free ||
-          !!series?.is_free ||
+          ep.is_free === true ||
+          series?.is_free === true ||
           hasSubscription ||
           unlockedEpisodeIds.has(
             ep.id
@@ -743,22 +1064,23 @@ export default function PlayerScreen() {
         );
       },
       [
+        series?.is_free,
         hasSubscription,
         unlockedEpisodeIds,
-        series,
       ]
     );
 
   /*
-   * Toggle controls.
+   * ============================================================
+   * CONTROLS
+   * ============================================================
    */
 
   const toggleControls =
     useCallback(() => {
       setShowControls(
         (previous) => {
-          const next =
-            !previous;
+          const next = !previous;
 
           if (
             next &&
@@ -774,9 +1096,13 @@ export default function PlayerScreen() {
 
             controlsTimer.current =
               setTimeout(() => {
-                setShowControls(
-                  false
-                );
+                if (
+                  mountedRef.current
+                ) {
+                  setShowControls(
+                    false
+                  );
+                }
               }, 4000);
           }
 
@@ -787,22 +1113,29 @@ export default function PlayerScreen() {
 
   useEffect(() => {
     if (
+      controlsTimer.current
+    ) {
+      clearTimeout(
+        controlsTimer.current
+      );
+
+      controlsTimer.current =
+        null;
+    }
+
+    if (
       showControls &&
       isPlaying
     ) {
-      if (
-        controlsTimer.current
-      ) {
-        clearTimeout(
-          controlsTimer.current
-        );
-      }
-
       controlsTimer.current =
         setTimeout(() => {
-          setShowControls(
-            false
-          );
+          if (
+            mountedRef.current
+          ) {
+            setShowControls(
+              false
+            );
+          }
         }, 4000);
     }
 
@@ -813,6 +1146,9 @@ export default function PlayerScreen() {
         clearTimeout(
           controlsTimer.current
         );
+
+        controlsTimer.current =
+          null;
       }
     };
   }, [
@@ -821,15 +1157,19 @@ export default function PlayerScreen() {
   ]);
 
   /*
-   * Format video time.
+   * ============================================================
+   * FORMAT TIME
+   * ============================================================
    */
 
   const formatTime = (
     seconds: number
   ) => {
     if (
-      !seconds ||
-      Number.isNaN(seconds)
+      !Number.isFinite(
+        seconds
+      ) ||
+      seconds <= 0
     ) {
       return '0:00';
     }
@@ -848,6 +1188,12 @@ export default function PlayerScreen() {
       .toString()
       .padStart(2, '0')}`;
   };
+
+  /*
+   * ============================================================
+   * EPISODE NAVIGATION
+   * ============================================================
+   */
 
   const currentIndex =
     allEpisodes.findIndex(
@@ -873,7 +1219,9 @@ export default function PlayerScreen() {
       : null;
 
   /*
-   * Loading state.
+   * ============================================================
+   * LOADING
+   * ============================================================
    */
 
   if (loading) {
@@ -887,7 +1235,9 @@ export default function PlayerScreen() {
   }
 
   /*
-   * Error state.
+   * ============================================================
+   * ERROR
+   * ============================================================
    */
 
   if (
@@ -902,6 +1252,12 @@ export default function PlayerScreen() {
     );
   }
 
+  /*
+   * ============================================================
+   * PROGRESS
+   * ============================================================
+   */
+
   const progress =
     duration > 0
       ? Math.min(
@@ -915,6 +1271,12 @@ export default function PlayerScreen() {
         )
       : 0;
 
+  /*
+   * ============================================================
+   * RENDER
+   * ============================================================
+   */
+
   return (
     <View
       style={
@@ -927,7 +1289,9 @@ export default function PlayerScreen() {
         }
       />
 
-      {/* ================= VIDEO PLAYER ================= */}
+      {/* ======================================================
+          VIDEO PLAYER
+          ====================================================== */}
 
       <View
         style={[
@@ -988,13 +1352,17 @@ export default function PlayerScreen() {
                     style={
                       styles.controlButton
                     }
-                    onPress={() =>
-                      isFullscreen
-                        ? setIsFullscreen(
-                            false
-                          )
-                        : router.back()
-                    }
+                    onPress={() => {
+                      if (
+                        isFullscreen
+                      ) {
+                        setIsFullscreen(
+                          false
+                        );
+                      } else {
+                        router.back();
+                      }
+                    }}
                   >
                     <ChevronLeft
                       size={24}
@@ -1031,24 +1399,25 @@ export default function PlayerScreen() {
                   />
                 </View>
 
-                {/* CENTER PLAY BUTTON */}
+                {/* CENTER PLAY */}
 
                 <TouchableOpacity
                   style={
                     styles.centerPlayButton
                   }
                   onPress={() => {
-                    if (
-                      isPlaying
-                    ) {
-                      player.pause();
-                      setIsPlaying(
-                        false
-                      );
-                    } else {
-                      player.play();
-                      setIsPlaying(
-                        true
+                    try {
+                      if (
+                        isPlaying
+                      ) {
+                        player.pause();
+                      } else {
+                        player.play();
+                      }
+                    } catch (err) {
+                      console.error(
+                        'Play/pause error:',
+                        err
                       );
                     }
                   }}
@@ -1244,7 +1613,9 @@ export default function PlayerScreen() {
             )}
           </>
         ) : (
-          /* ================= LOCKED EPISODE ================= */
+          /* ==================================================
+             LOCKED EPISODE
+             ================================================== */
 
           <View
             style={
@@ -1312,7 +1683,9 @@ export default function PlayerScreen() {
         )}
       </View>
 
-      {/* ================= EPISODE INFORMATION ================= */}
+      {/* ======================================================
+          EPISODE INFORMATION
+          ====================================================== */}
 
       {!isFullscreen && (
         <View
