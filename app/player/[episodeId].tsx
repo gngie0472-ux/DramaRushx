@@ -128,66 +128,82 @@ export default function PlayerScreen() {
    */
 
   const fetchVideoUrl = useCallback(
-    async (id: string) => {
-      try {
-        if (!id) {
-          console.error('fetchVideoUrl: missing episode id');
-          return null;
-        }
+  async (id: string) => {
+    try {
+      if (!id) {
+        console.error('Missing episode ID');
+        return null;
+      }
 
-        const {
-          data,
-          error: functionError,
-        } = await supabase.functions.invoke(
+      const {
+        data: sessionData,
+      } = await supabase.auth.getSession();
+
+      const accessToken =
+        sessionData.session?.access_token;
+
+      if (!accessToken) {
+        console.error('No authenticated session');
+        return null;
+      }
+
+      const { data, error: functionError } =
+        await supabase.functions.invoke(
           'get-video-url',
           {
             body: {
               episodeId: id,
             },
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
           }
         );
 
-        if (functionError) {
-          console.error(
-            'get-video-url error:',
-            functionError
-          );
-
-          return null;
-        }
-
-        if (!data) {
-          console.error(
-            'get-video-url returned empty response'
-          );
-
-          return null;
-        }
-
-        if (
-          typeof data.url !== 'string' ||
-          data.url.length === 0
-        ) {
-          console.error(
-            'get-video-url did not return a valid URL:',
-            data
-          );
-
-          return null;
-        }
-
-        return data.url;
-      } catch (err) {
+      if (functionError) {
         console.error(
-          'fetchVideoUrl exception:',
-          err
+          'get-video-url failed:',
+          functionError
         );
-
         return null;
       }
-    },
-    []
-  );
+
+      if (!data) {
+        console.error(
+          'get-video-url returned no data'
+        );
+        return null;
+      }
+
+      console.log(
+        'get-video-url response:',
+        data
+      );
+
+      if (
+        typeof data.url !== 'string' ||
+        !data.url.trim()
+      ) {
+        console.error(
+          'Invalid video URL:',
+          data
+        );
+        return null;
+      }
+
+      return data.url.trim();
+    } catch (error) {
+      console.error(
+        'fetchVideoUrl exception:',
+        error
+      );
+
+      return null;
+    }
+  },
+  []
+);
 
   /*
    * ============================================================
@@ -196,87 +212,74 @@ export default function PlayerScreen() {
    */
 
   const loadVideo = useCallback(
-    async (id: string) => {
-      if (!id) {
-        return false;
-      }
+  async (id: string) => {
+    if (!id || loadingVideoRef.current) {
+      return false;
+    }
 
-      if (loadingVideoRef.current) {
-        return false;
-      }
+    loadingVideoRef.current = true;
 
-      loadingVideoRef.current = true;
+    try {
+      const videoUrl = await fetchVideoUrl(id);
 
-      try {
-        const videoUrl = await fetchVideoUrl(id);
-
-        if (!videoUrl) {
-          if (mountedRef.current) {
-            setIsPlaying(false);
-            setError(true);
-          }
-
-          return false;
-        }
-
-        if (!mountedRef.current) {
-          return false;
-        }
-
-        /*
-         * Stop previous video before replacing it.
-         */
-
-        try {
-          player.pause();
-        } catch {
-          // Ignore.
-        }
-
-        /*
-         * Reset UI state.
-         */
-
-        setCurrentPosition(0);
-        setDuration(0);
-        setIsPlaying(false);
-
-        /*
-         * Load the secure URL.
-         */
-
-        player.replace(videoUrl);
-
-        /*
-         * Start playback.
-         */
-
-        player.play();
-
-        if (mountedRef.current) {
-          setIsPlaying(true);
-          setError(false);
-        }
-
-        return true;
-      } catch (err) {
-        console.error(
-          'loadVideo error:',
-          err
-        );
-
+      if (!videoUrl) {
         if (mountedRef.current) {
           setIsPlaying(false);
           setError(true);
         }
-
         return false;
-      } finally {
-        loadingVideoRef.current = false;
       }
-    },
-    [fetchVideoUrl, player]
-  );
+
+      if (!mountedRef.current) {
+        return false;
+      }
+
+      try {
+        player.pause();
+      } catch {
+        // Ignore
+      }
+
+      setCurrentPosition(0);
+      setDuration(0);
+      setIsPlaying(false);
+      setError(false);
+
+      /*
+       * Important:
+       * Wait until the video source is actually loaded
+       * before starting playback.
+       */
+      await player.replaceAsync(videoUrl);
+
+      if (!mountedRef.current) {
+        return false;
+      }
+
+      player.play();
+
+      setIsPlaying(true);
+      setError(false);
+
+      return true;
+    } catch (error) {
+      console.error(
+        'Video loading error:',
+        error
+      );
+
+      if (mountedRef.current) {
+        setIsPlaying(false);
+        setError(true);
+      }
+
+      return false;
+    } finally {
+      loadingVideoRef.current = false;
+    }
+  },
+  [fetchVideoUrl, player]
+);
 
   /*
    * ============================================================
