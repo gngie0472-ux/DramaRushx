@@ -3,7 +3,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  useWindowDimensions,
+  ScrollView,
 } from 'react-native';
 
 import { Colors } from '@/lib/theme';
@@ -25,20 +25,13 @@ export function SeriesRow({
   onSeriesPress,
   onSeeAll,
 }: SeriesRowProps) {
-  const { width: screenWidth } = useWindowDimensions();
-
-  const horizontalPadding = 16;
-  const gap = 10;
-
-  const availableWidth =
-    screenWidth -
-    horizontalPadding * 2 -
-    gap * 2;
-
-  const cardWidth = Math.floor(availableWidth / 3);
+  if (!series || series.length === 0) {
+    return null;
+  }
 
   return (
     <View style={styles.container}>
+      {/* Section Header */}
       <View style={styles.header}>
         <Text style={styles.title}>
           {title}
@@ -55,52 +48,56 @@ export function SeriesRow({
             </Text>
 
             <ChevronRight
-              size={15}
+              size={16}
               color={Colors.primary[400]}
+              strokeWidth={2.5}
             />
           </TouchableOpacity>
         )}
       </View>
 
-      <View style={styles.grid}>
+      {/* Horizontal Series List */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.rowContent}
+        decelerationRate="fast"
+        snapToAlignment="start"
+      >
         {series.map((item) => (
           <View
             key={item.id}
-            style={[
-              styles.gridItem,
-              {
-                width: cardWidth,
-              },
-            ]}
+            style={styles.cardWrapper}
           >
             <SeriesCard
               series={item}
               onPress={onSeriesPress}
-              width={cardWidth}
+              width={145}
             />
           </View>
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: 18,
+    marginBottom: 6,
   },
 
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 10,
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    marginBottom: 12,
   },
 
   title: {
-    fontSize: 18,
+    fontSize: 21,
+    lineHeight: 27,
     fontFamily: 'Cairo-Bold',
     color: Colors.dark.text,
   },
@@ -108,25 +105,22 @@ const styles = StyleSheet.create({
   seeAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingVertical: 5,
+    paddingLeft: 8,
   },
 
   seeAllText: {
     fontSize: 12,
-    fontFamily: 'Cairo-Regular',
+    fontFamily: 'Cairo-SemiBold',
     color: Colors.primary[400],
   },
 
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 16,
-    columnGap: 10,
-    rowGap: 16,
+  rowContent: {
+    paddingLeft: 18,
+    paddingRight: 8,
   },
 
-  gridItem: {
-    flexGrow: 0,
-    flexShrink: 0,
+  cardWrapper: {
+    marginRight: 12,
   },
 });
