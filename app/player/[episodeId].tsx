@@ -89,6 +89,8 @@ export default function PlayerScreen() {
 
   const [error, setError] =
     useState(false);
+const [errorMessage, setErrorMessage] =
+  useState('Unable to load episode');
 
   const [isPlaying, setIsPlaying] =
     useState(false);
