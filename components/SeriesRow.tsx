@@ -27,13 +27,6 @@ export function SeriesRow({
 }: SeriesRowProps) {
   const { width: screenWidth } = useWindowDimensions();
 
-  /*
-   * Responsive 3-column grid.
-   *
-   * The card automatically becomes smaller/larger
-   * depending on the phone screen width.
-   */
-
   const horizontalPadding = 16;
   const gap = 10;
 
@@ -42,13 +35,10 @@ export function SeriesRow({
     horizontalPadding * 2 -
     gap * 2;
 
-  const cardWidth = Math.floor(
-    availableWidth / 3
-  );
+  const cardWidth = Math.floor(availableWidth / 3);
 
   return (
     <View style={styles.container}>
-      {/* Section header */}
       <View style={styles.header}>
         <Text style={styles.title}>
           {title}
@@ -67,13 +57,11 @@ export function SeriesRow({
             <ChevronRight
               size={15}
               color={Colors.primary[400]}
-              strokeWidth={2}
             />
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Responsive 3-column grid */}
       <View style={styles.grid}>
         {series.map((item) => (
           <View
@@ -107,52 +95,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-
     paddingHorizontal: 16,
-
     marginBottom: 10,
   },
 
   title: {
     fontSize: 18,
-
     fontFamily: 'Cairo-Bold',
-
     color: Colors.dark.text,
-
-    textAlign: 'left',
   },
 
   seeAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
-
     paddingVertical: 4,
-    paddingHorizontal: 2,
   },
 
   seeAllText: {
     fontSize: 12,
-
     fontFamily: 'Cairo-Regular',
-
     color: Colors.primary[400],
-
-    textAlign: 'left',
   },
 
   grid: {
     flexDirection: 'row',
-
     flexWrap: 'wrap',
-
     paddingHorizontal: 16,
-
     columnGap: 10,
-
     rowGap: 16,
-
-    alignItems: 'flex-start',
   },
 
   gridItem: {
