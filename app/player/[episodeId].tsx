@@ -1,73 +1,153 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+} from 'react';
+
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Platform,
   StatusBar,
   Alert,
+  LayoutChangeEvent,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useVideoPlayer, VideoView } from 'expo-video';
+
+import {
+  router,
+  useLocalSearchParams,
+} from 'expo-router';
+
+import {
+  useVideoPlayer,
+  VideoView,
+} from 'expo-video';
+
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import { Colors } from '@/lib/theme';
-import type { Episode, Series } from '@/lib/types';
-import { ErrorState } from '@/components/States';
+import type {
+  Episode,
+  Series,
+} from '@/lib/types';
+
 import {
   ChevronLeft,
   ChevronRight,
   Lock,
   Coins,
   Play,
-  SkipForward,
 } from 'lucide-react-native';
 
 export default function PlayerScreen() {
-  const params = useLocalSearchParams<{
-    episodeId?: string | string[];
-  }>();
+  /*
+   * ============================================================
+   * PARAMS
+   * ============================================================
+   */
 
-  const episodeId = Array.isArray(params.episodeId)
-    ? params.episodeId[0]
-    : params.episodeId;
+  const params =
+    useLocalSearchParams<{
+      episodeId?: string | string[];
+    }>();
+
+  const episodeId =
+    Array.isArray(params.episodeId)
+      ? params.episodeId[0]
+      : params.episodeId;
 
   const { session } = useAuth();
 
-  const [episode, setEpisode] = useState<Episode | null>(null);
-  const [series, setSeries] = useState<Series | null>(null);
-  const [allEpisodes, setAllEpisodes] = useState<Episode[]>([]);
+  /*
+   * ============================================================
+   * STATE
+   * ============================================================
+   */
 
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [hasSubscription, setHasSubscription] = useState(false);
+  const [episode, setEpisode] =
+    useState<Episode | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [series, setSeries] =
+    useState<Series | null>(null);
 
-  const [showControls, setShowControls] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [allEpisodes, setAllEpisodes] =
+    useState<Episode[]>([]);
 
-  const [currentPosition, setCurrentPosition] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [isUnlocked, setIsUnlocked] =
+    useState(false);
+
+  const [hasSubscription, setHasSubscription] =
+    useState(false);
 
   const [unlockedEpisodeIds, setUnlockedEpisodeIds] =
     useState<Set<string>>(new Set());
 
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [loading, setLoading] =
+    useState(true);
 
-  const viewRecordedRef = useRef(false);
-  const viewSessionIdRef = useRef<string | null>(null);
+  const [error, setError] =
+    useState(false);
 
-  const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isPlaying, setIsPlaying] =
+    useState(false);
 
-  const mountedRef = useRef(true);
-  const loadingVideoRef = useRef(false);
+  const [showControls, setShowControls] =
+    useState(true);
 
-  const player = useVideoPlayer(null, (p) => {
-    p.loop = false;
-    p.muted = false;
-  });
+  const [isFullscreen, setIsFullscreen] =
+    useState(false);
+
+  const [currentPosition, setCurrentPosition] =
+    useState(0);
+
+  const [duration, setDuration] =
+    useState(0);
+
+  const [progressWidth, setProgressWidth] =
+    useState(0);
+
+  /*
+   * ============================================================
+   * REFS
+   * ============================================================
+   */
+
+  const mountedRef =
+    useRef(true);
+
+  const loadingVideoRef =
+    useRef(false);
+
+  const controlsTimer =
+    useRef<ReturnType<typeof setTimeout> | null>(
+      null
+    );
+
+  const viewRecordedRef =
+    useRef(false);
+
+  const viewSessionIdRef =
+    useRef<string | null>(null);
+
+  /*
+   * ============================================================
+   * VIDEO PLAYER
+   * ============================================================
+   */
+
+  const player =
+    useVideoPlayer(null, (p) => {
+      p.loop = false;
+      p.muted = false;
+    });
+
+  /*
+   * ============================================================
+   * CLEANUP
+   * ============================================================
+   */
 
   useEffect(() => {
     mountedRef.current = true;
@@ -76,7 +156,10 @@ export default function PlayerScreen() {
       mountedRef.current = false;
 
       if (controlsTimer.current) {
-        clearTimeout(controlsTimer.current);
+        clearTimeout(
+          controlsTimer.current
+        );
+
         controlsTimer.current = null;
       }
 
@@ -94,32 +177,69 @@ export default function PlayerScreen() {
    * ============================================================
    */
 
-  const makeUuid = useCallback(() => {
-    const cryptoObject = globalThis.crypto as
-      | Crypto
-      | undefined;
+  const makeUuid =
+    useCallback(() => {
+      const cryptoObject =
+        globalThis.crypto as
+          | Crypto
+          | undefined;
 
-    if (
-      cryptoObject &&
-      typeof cryptoObject.randomUUID === 'function'
-    ) {
-      return cryptoObject.randomUUID();
-    }
-
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(
-      /[xy]/g,
-      (character) => {
-        const random = Math.floor(Math.random() * 16);
-
-        const value =
-          character === 'x'
-            ? random
-            : (random & 0x3) | 0x8;
-
-        return value.toString(16);
+      if (
+        cryptoObject &&
+        typeof cryptoObject.randomUUID ===
+          'function'
+      ) {
+        return cryptoObject.randomUUID();
       }
-    );
-  }, []);
+
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(
+        /[xy]/g,
+        (character) => {
+          const random =
+            Math.floor(
+              Math.random() * 16
+            );
+
+          const value =
+            character === 'x'
+              ? random
+              : (random & 0x3) | 0x8;
+
+          return value.toString(16);
+        }
+      );
+    }, []);
+
+  /*
+   * ============================================================
+   * CONTROL VISIBILITY
+   * ============================================================
+   */
+
+  const showPlayerControls =
+    useCallback(() => {
+      setShowControls(true);
+
+      if (controlsTimer.current) {
+        clearTimeout(
+          controlsTimer.current
+        );
+      }
+
+      /*
+       * Hide controls automatically while playing.
+       */
+      if (isPlaying) {
+        controlsTimer.current =
+          setTimeout(() => {
+            if (
+              mountedRef.current
+            ) {
+              setShowControls(false);
+            }
+          }, 4000);
+      }
+    }, [isPlaying]);
 
   /*
    * ============================================================
@@ -127,83 +247,103 @@ export default function PlayerScreen() {
    * ============================================================
    */
 
-  const fetchVideoUrl = useCallback(
-  async (id: string) => {
-    try {
-      if (!id) {
-        console.error('Missing episode ID');
-        return null;
-      }
+  const fetchVideoUrl =
+    useCallback(
+      async (id: string) => {
+        try {
+          if (!id) {
+            console.error(
+              'Missing episode ID'
+            );
 
-      const {
-        data: sessionData,
-      } = await supabase.auth.getSession();
-
-      const accessToken =
-        sessionData.session?.access_token;
-
-      if (!accessToken) {
-        console.error('No authenticated session');
-        return null;
-      }
-
-      const { data, error: functionError } =
-        await supabase.functions.invoke(
-          'get-video-url',
-          {
-            body: {
-              episodeId: id,
-            },
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
+            return null;
           }
-        );
 
-      if (functionError) {
-        console.error(
-          'get-video-url failed:',
-          functionError
-        );
-        return null;
-      }
+          const {
+            data: sessionData,
+          } =
+            await supabase.auth.getSession();
 
-      if (!data) {
-        console.error(
-          'get-video-url returned no data'
-        );
-        return null;
-      }
+          const accessToken =
+            sessionData.session
+              ?.access_token;
 
-      console.log(
-        'get-video-url response:',
-        data
-      );
+          if (!accessToken) {
+            console.error(
+              'No authenticated session'
+            );
 
-      if (
-        typeof data.url !== 'string' ||
-        !data.url.trim()
-      ) {
-        console.error(
-          'Invalid video URL:',
-          data
-        );
-        return null;
-      }
+            return null;
+          }
 
-      return data.url.trim();
-    } catch (error) {
-      console.error(
-        'fetchVideoUrl exception:',
-        error
-      );
+          const {
+            data,
+            error: functionError,
+          } =
+            await supabase.functions.invoke(
+              'get-video-url',
+              {
+                body: {
+                  episodeId: id,
+                },
 
-      return null;
-    }
-  },
-  []
-);
+                headers: {
+                  Authorization:
+                    `Bearer ${accessToken}`,
+
+                  'Content-Type':
+                    'application/json',
+                },
+              }
+            );
+
+          if (functionError) {
+            console.error(
+              'get-video-url failed:',
+              functionError
+            );
+
+            return null;
+          }
+
+          if (!data) {
+            console.error(
+              'get-video-url returned no data'
+            );
+
+            return null;
+          }
+
+          console.log(
+            'get-video-url response:',
+            data
+          );
+
+          if (
+            typeof data.url !==
+              'string' ||
+            !data.url.trim()
+          ) {
+            console.error(
+              'Invalid video URL:',
+              data
+            );
+
+            return null;
+          }
+
+          return data.url.trim();
+        } catch (err) {
+          console.error(
+            'fetchVideoUrl exception:',
+            err
+          );
+
+          return null;
+        }
+      },
+      []
+    );
 
   /*
    * ============================================================
@@ -211,75 +351,99 @@ export default function PlayerScreen() {
    * ============================================================
    */
 
-  const loadVideo = useCallback(
-  async (id: string) => {
-    if (!id || loadingVideoRef.current) {
-      return false;
-    }
-
-    loadingVideoRef.current = true;
-
-    try {
-      const videoUrl = await fetchVideoUrl(id);
-
-      if (!videoUrl) {
-        if (mountedRef.current) {
-          setIsPlaying(false);
-          setError(true);
+  const loadVideo =
+    useCallback(
+      async (id: string) => {
+        if (
+          !id ||
+          loadingVideoRef.current
+        ) {
+          return false;
         }
-        return false;
-      }
 
-      if (!mountedRef.current) {
-        return false;
-      }
+        loadingVideoRef.current =
+          true;
 
-      try {
-        player.pause();
-      } catch {
-        // Ignore
-      }
+        try {
+          const videoUrl =
+            await fetchVideoUrl(id);
 
-      setCurrentPosition(0);
-      setDuration(0);
-      setIsPlaying(false);
-      setError(false);
+          if (!videoUrl) {
+            if (
+              mountedRef.current
+            ) {
+              setIsPlaying(false);
+              setError(true);
+            }
 
-      /*
-       * Important:
-       * Wait until the video source is actually loaded
-       * before starting playback.
-       */
-      await player.replaceAsync(videoUrl);
+            return false;
+          }
 
-      if (!mountedRef.current) {
-        return false;
-      }
+          if (
+            !mountedRef.current
+          ) {
+            return false;
+          }
 
-      player.play();
+          try {
+            player.pause();
+          } catch {
+            // Ignore.
+          }
 
-      setIsPlaying(true);
-      setError(false);
+          setCurrentPosition(0);
+          setDuration(0);
+          setIsPlaying(false);
+          setError(false);
 
-      return true;
-    } catch (error) {
-      console.error(
-        'Video loading error:',
-        error
-      );
+          /*
+           * Load the signed URL.
+           */
 
-      if (mountedRef.current) {
-        setIsPlaying(false);
-        setError(true);
-      }
+          await player.replaceAsync(
+            videoUrl
+          );
 
-      return false;
-    } finally {
-      loadingVideoRef.current = false;
-    }
-  },
-  [fetchVideoUrl, player]
-);
+          if (
+            !mountedRef.current
+          ) {
+            return false;
+          }
+
+          /*
+           * Start playback.
+           */
+
+          player.play();
+
+          setIsPlaying(true);
+          setError(false);
+
+          return true;
+        } catch (err) {
+          console.error(
+            'Video loading error:',
+            err
+          );
+
+          if (
+            mountedRef.current
+          ) {
+            setIsPlaying(false);
+            setError(true);
+          }
+
+          return false;
+        } finally {
+          loadingVideoRef.current =
+            false;
+        }
+      },
+      [
+        fetchVideoUrl,
+        player,
+      ]
+    );
 
   /*
    * ============================================================
@@ -287,323 +451,410 @@ export default function PlayerScreen() {
    * ============================================================
    */
 
-  const fetchData = useCallback(async () => {
-    if (!episodeId) {
-      setError(true);
-      setLoading(false);
-      return;
-    }
+  const fetchData =
+    useCallback(
+      async () => {
+        if (!episodeId) {
+          setError(true);
+          setLoading(false);
 
-    setLoading(true);
-    setError(false);
-
-    try {
-      /*
-       * Get episode.
-       */
-
-      const episodeColumns =
-        'id, series_id, episode_number, title, description, thumbnail_url, video_path, duration, is_free, coin_price, view_count, created_at';
-
-      const {
-        data: epData,
-        error: epError,
-      } = await supabase
-        .from('episodes')
-        .select(episodeColumns)
-        .eq('id', episodeId)
-        .maybeSingle();
-
-      if (epError) {
-        console.error(
-          'Episode query error:',
-          epError
-        );
-
-        setError(true);
-        return;
-      }
-
-      if (!epData) {
-        console.error(
-          'Episode not found:',
-          episodeId
-        );
-
-        setError(true);
-        return;
-      }
-
-      const ep = epData as Episode;
-
-      if (!mountedRef.current) {
-        return;
-      }
-
-      setEpisode(ep);
-
-      /*
-       * Get series and all episodes.
-       */
-
-      const [
-        seriesRes,
-        episodesRes,
-      ] = await Promise.all([
-        supabase
-          .from('series')
-          .select('*')
-          .eq('id', ep.series_id)
-          .maybeSingle(),
-
-        supabase
-          .from('episodes')
-          .select(episodeColumns)
-          .eq('series_id', ep.series_id)
-          .order('episode_number', {
-            ascending: true,
-          }),
-      ]);
-
-      if (seriesRes.error) {
-        console.error(
-          'Series query error:',
-          seriesRes.error
-        );
-      }
-
-      if (episodesRes.error) {
-        console.error(
-          'Episodes query error:',
-          episodesRes.error
-        );
-      }
-
-      const currentSeries =
-        seriesRes.data
-          ? (seriesRes.data as Series)
-          : null;
-
-      const currentEpisodes =
-        (episodesRes.data || []) as Episode[];
-
-      if (!mountedRef.current) {
-        return;
-      }
-
-      setSeries(currentSeries);
-      setAllEpisodes(currentEpisodes);
-
-      /*
-       * ========================================================
-       * ACCESS CONTROL
-       * ========================================================
-       *
-       * Free episode
-       * OR free series
-       * OR active subscription
-       * OR unlocked episode
-       */
-
-      const seriesIsFree =
-        currentSeries?.is_free === true;
-
-      const episodeIsFree =
-        ep.is_free === true;
-
-      const isFree =
-        episodeIsFree ||
-        seriesIsFree;
-
-      let subscribed = false;
-
-      const userUnlockIds =
-        new Set<string>();
-
-      if (session?.user?.id) {
-        /*
-         * Check subscription and unlocked episodes.
-         */
-
-        const [
-          subscriptionResult,
-          unlockResult,
-        ] = await Promise.all([
-          supabase.rpc(
-            'has_active_subscription'
-          ),
-
-          supabase
-            .from('unlocked_episodes')
-            .select('episode_id')
-            .eq(
-              'user_id',
-              session.user.id
-            ),
-        ]);
-
-        if (subscriptionResult.error) {
-          console.error(
-            'Subscription check error:',
-            subscriptionResult.error
-          );
-        }
-
-        subscribed =
-          subscriptionResult.data === true;
-
-        if (unlockResult.error) {
-          console.error(
-            'Unlocked episodes query error:',
-            unlockResult.error
-          );
-        }
-
-        for (
-          const row of unlockResult.data || []
-        ) {
-          if (
-            row &&
-            typeof row.episode_id ===
-              'string'
-          ) {
-            userUnlockIds.add(
-              row.episode_id
-            );
-          }
-        }
-      }
-
-      const unlocked =
-        isFree ||
-        subscribed ||
-        userUnlockIds.has(ep.id);
-
-      if (!mountedRef.current) {
-        return;
-      }
-
-      setUnlockedEpisodeIds(
-        userUnlockIds
-      );
-
-      setHasSubscription(
-        subscribed
-      );
-
-      setIsUnlocked(
-        unlocked
-      );
-
-      /*
-       * New view session.
-       */
-
-      viewRecordedRef.current =
-        false;
-
-      viewSessionIdRef.current =
-        makeUuid();
-
-      /*
-       * ========================================================
-       * LOAD VIDEO ONLY IF AUTHORIZED
-       * ========================================================
-       */
-
-      if (unlocked) {
-        const videoLoaded =
-          await loadVideo(ep.id);
-
-        if (!videoLoaded) {
           return;
         }
 
-        /*
-         * Restore watch position.
-         */
+        setLoading(true);
+        setError(false);
 
-        if (session?.user?.id) {
+        try {
+          /*
+           * Get episode.
+           */
+
+          const episodeColumns =
+            'id, series_id, episode_number, title, description, thumbnail_url, video_path, duration, is_free, coin_price, view_count, created_at';
+
           const {
-            data: historyData,
-            error: historyError,
-          } = await supabase
-            .from('watch_history')
-            .select('position, duration')
-            .eq(
-              'user_id',
-              session.user.id
-            )
-            .eq(
-              'episode_id',
-              ep.id
-            )
-            .maybeSingle();
+            data: epData,
+            error: epError,
+          } =
+            await supabase
+              .from('episodes')
+              .select(
+                episodeColumns
+              )
+              .eq(
+                'id',
+                episodeId
+              )
+              .maybeSingle();
 
-          if (historyError) {
+          if (epError) {
             console.error(
-              'Watch history query error:',
-              historyError
+              'Episode query error:',
+              epError
+            );
+
+            setError(true);
+
+            return;
+          }
+
+          if (!epData) {
+            console.error(
+              'Episode not found:',
+              episodeId
+            );
+
+            setError(true);
+
+            return;
+          }
+
+          const ep =
+            epData as Episode;
+
+          if (
+            !mountedRef.current
+          ) {
+            return;
+          }
+
+          setEpisode(ep);
+
+          /*
+           * Get series + episodes.
+           */
+
+          const [
+            seriesRes,
+            episodesRes,
+          ] =
+            await Promise.all([
+              supabase
+                .from('series')
+                .select('*')
+                .eq(
+                  'id',
+                  ep.series_id
+                )
+                .maybeSingle(),
+
+              supabase
+                .from('episodes')
+                .select(
+                  episodeColumns
+                )
+                .eq(
+                  'series_id',
+                  ep.series_id
+                )
+                .order(
+                  'episode_number',
+                  {
+                    ascending:
+                      true,
+                  }
+                ),
+            ]);
+
+          if (
+            seriesRes.error
+          ) {
+            console.error(
+              'Series query error:',
+              seriesRes.error
             );
           }
 
           if (
-            historyData &&
-            typeof historyData.position ===
-              'number' &&
-            historyData.position > 0
+            episodesRes.error
           ) {
+            console.error(
+              'Episodes query error:',
+              episodesRes.error
+            );
+          }
+
+          const currentSeries =
+            seriesRes.data
+              ? (seriesRes.data as Series)
+              : null;
+
+          const currentEpisodes =
+            (episodesRes.data ||
+              []) as Episode[];
+
+          if (
+            !mountedRef.current
+          ) {
+            return;
+          }
+
+          setSeries(
+            currentSeries
+          );
+
+          setAllEpisodes(
+            currentEpisodes
+          );
+
+          /*
+           * ====================================================
+           * ACCESS CONTROL
+           * ====================================================
+           */
+
+          const seriesIsFree =
+            currentSeries?.is_free ===
+            true;
+
+          const episodeIsFree =
+            ep.is_free === true;
+
+          const isFree =
+            episodeIsFree ||
+            seriesIsFree;
+
+          let subscribed =
+            false;
+
+          const userUnlockIds =
+            new Set<string>();
+
+          if (
+            session?.user?.id
+          ) {
+            const [
+              subscriptionResult,
+              unlockResult,
+            ] =
+              await Promise.all([
+                supabase.rpc(
+                  'has_active_subscription'
+                ),
+
+                supabase
+                  .from(
+                    'unlocked_episodes'
+                  )
+                  .select(
+                    'episode_id'
+                  )
+                  .eq(
+                    'user_id',
+                    session.user.id
+                  ),
+              ]);
+
+            if (
+              subscriptionResult.error
+            ) {
+              console.error(
+                'Subscription check error:',
+                subscriptionResult.error
+              );
+            }
+
+            subscribed =
+              subscriptionResult.data ===
+              true;
+
+            if (
+              unlockResult.error
+            ) {
+              console.error(
+                'Unlocked episodes query error:',
+                unlockResult.error
+              );
+            }
+
+            for (
+              const row of
+                unlockResult.data ||
+                []
+            ) {
+              if (
+                row &&
+                typeof row.episode_id ===
+                  'string'
+              ) {
+                userUnlockIds.add(
+                  row.episode_id
+                );
+              }
+            }
+          }
+
+          const unlocked =
+            isFree ||
+            subscribed ||
+            userUnlockIds.has(
+              ep.id
+            );
+
+          if (
+            !mountedRef.current
+          ) {
+            return;
+          }
+
+          setUnlockedEpisodeIds(
+            userUnlockIds
+          );
+
+          setHasSubscription(
+            subscribed
+          );
+
+          setIsUnlocked(
+            unlocked
+          );
+
+          /*
+           * New view session.
+           */
+
+          viewRecordedRef.current =
+            false;
+
+          viewSessionIdRef.current =
+            makeUuid();
+
+          /*
+           * Load only if authorized.
+           */
+
+          if (unlocked) {
+            const videoLoaded =
+              await loadVideo(
+                ep.id
+              );
+
+            if (!videoLoaded) {
+              return;
+            }
+
             /*
-             * Wait briefly so the player can
-             * initialize the media.
+             * Restore watch position.
              */
 
-            setTimeout(() => {
-              if (!mountedRef.current) {
-                return;
+            if (
+              session?.user?.id
+            ) {
+              const {
+                data:
+                  historyData,
+                error:
+                  historyError,
+              } =
+                await supabase
+                  .from(
+                    'watch_history'
+                  )
+                  .select(
+                    'position, duration'
+                  )
+                  .eq(
+                    'user_id',
+                    session.user.id
+                  )
+                  .eq(
+                    'episode_id',
+                    ep.id
+                  )
+                  .maybeSingle();
+
+              if (
+                historyError
+              ) {
+                console.error(
+                  'Watch history query error:',
+                  historyError
+                );
               }
 
-              try {
-                player.currentTime =
+              if (
+                historyData &&
+                typeof historyData.position ===
+                  'number' &&
+                historyData.position >
+                  0
+              ) {
+                /*
+                 * Do not restore if the video
+                 * is basically finished.
+                 */
+
+                const savedPosition =
                   historyData.position;
 
-                setCurrentPosition(
-                  historyData.position
-                );
-              } catch (err) {
-                console.error(
-                  'Restore position error:',
-                  err
-                );
+                const savedDuration =
+                  Number(
+                    historyData.duration
+                  ) || 0;
+
+                if (
+                  savedDuration <= 0 ||
+                  savedPosition <
+                    savedDuration -
+                      2
+                ) {
+                  setTimeout(() => {
+                    if (
+                      !mountedRef.current
+                    ) {
+                      return;
+                    }
+
+                    try {
+                      player.currentTime =
+                        savedPosition;
+
+                      setCurrentPosition(
+                        savedPosition
+                      );
+                    } catch (err) {
+                      console.error(
+                        'Restore position error:',
+                        err
+                      );
+                    }
+                  }, 500);
+                }
               }
-            }, 500);
+            }
+          }
+        } catch (err) {
+          console.error(
+            'Player fetch error:',
+            err
+          );
+
+          if (
+            mountedRef.current
+          ) {
+            setError(true);
+          }
+        } finally {
+          if (
+            mountedRef.current
+          ) {
+            setLoading(false);
           }
         }
-      }
-    } catch (err) {
-      console.error(
-        'Player fetch error:',
-        err
-      );
-
-      if (mountedRef.current) {
-        setError(true);
-      }
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
-    }
-  }, [
-    episodeId,
-    session?.user?.id,
-    makeUuid,
-    loadVideo,
-    player,
-  ]);
+      },
+      [
+        episodeId,
+        session?.user?.id,
+        makeUuid,
+        loadVideo,
+        player,
+      ]
+    );
 
   /*
-   * Reload whenever episodeId changes.
+   * ============================================================
+   * LOAD DATA
+   * ============================================================
    */
 
   useEffect(() => {
@@ -616,36 +867,69 @@ export default function PlayerScreen() {
         // Ignore.
       }
     };
-  }, [fetchData, player]);
+  }, [
+    fetchData,
+    player,
+  ]);
 
   /*
    * ============================================================
-   * PLAYER STATUS LISTENER
+   * PLAY / PAUSE STATE
    * ============================================================
    */
 
   useEffect(() => {
-    const statusSubscription =
+    const subscription =
       player.addListener(
-        'statusChange',
+        'playingChange',
         (event) => {
-          if (!mountedRef.current) {
+          if (
+            !mountedRef.current
+          ) {
             return;
           }
 
-          /*
-           * expo-video reports status changes.
-           * Keep UI synchronized where possible.
-           */
+          const playing =
+            !!event.isPlaying;
+
+          setIsPlaying(
+            playing
+          );
+        }
+      );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [player]);
+
+  /*
+   * ============================================================
+   * VIDEO STATUS
+   * ============================================================
+   */
+
+  useEffect(() => {
+    const subscription =
+      player.addListener(
+        'statusChange',
+        (event) => {
+          if (
+            !mountedRef.current
+          ) {
+            return;
+          }
 
           const status =
             String(
-              (event as any)?.status ||
-                ''
+              (event as any)
+                ?.status || ''
             ).toLowerCase();
 
           if (
-            status.includes('error')
+            status.includes(
+              'error'
+            )
           ) {
             setIsPlaying(false);
           }
@@ -653,13 +937,13 @@ export default function PlayerScreen() {
       );
 
     return () => {
-      statusSubscription.remove();
+      subscription.remove();
     };
   }, [player]);
 
   /*
    * ============================================================
-   * PLAYBACK POSITION / VIEW TRACKING
+   * POSITION + VIEW TRACKING
    * ============================================================
    */
 
@@ -673,117 +957,129 @@ export default function PlayerScreen() {
     }
 
     const interval =
-      setInterval(async () => {
-        if (!mountedRef.current) {
-          return;
-        }
-
-        try {
-          const position =
-            Number(player.currentTime) || 0;
-
-          const videoDuration =
-            Number(player.duration) || 0;
-
-          setCurrentPosition(
-            position
-          );
-
-          setDuration(
-            videoDuration
-          );
-
-          /*
-           * Record a view after meaningful playback.
-           */
-
-          const threshold =
-            videoDuration > 0
-              ? Math.min(
-                  30,
-                  videoDuration * 0.1
-                )
-              : 30;
-
+      setInterval(
+        async () => {
           if (
-            !viewRecordedRef.current &&
-            position >= threshold &&
-            viewSessionIdRef.current
+            !mountedRef.current
           ) {
-            viewRecordedRef.current =
-              true;
-
-            const {
-              error: viewError,
-            } = await supabase.rpc(
-              'record_episode_view',
-              {
-                p_episode_id:
-                  episode.id,
-                p_session_id:
-                  viewSessionIdRef.current,
-              }
-            );
-
-            if (viewError) {
-              console.error(
-                'View recording error:',
-                viewError
-              );
-
-              /*
-               * Allow another attempt if
-               * the database call failed.
-               */
-
-              viewRecordedRef.current =
-                false;
-            }
+            return;
           }
 
-          /*
-           * Save watch history.
-           */
+          try {
+            const position =
+              Number(
+                player.currentTime
+              ) || 0;
 
-          await supabase
-            .from('watch_history')
-            .upsert(
-              {
-                user_id:
-                  session.user.id,
+            const videoDuration =
+              Number(
+                player.duration
+              ) || 0;
 
-                series_id:
-                  episode.series_id,
-
-                episode_id:
-                  episode.id,
-
-                position:
-                  Math.floor(position),
-
-                duration:
-                  Math.floor(
-                    videoDuration
-                  ),
-
-                watched_at:
-                  new Date().toISOString(),
-              },
-              {
-                onConflict:
-                  'user_id,episode_id',
-              }
+            setCurrentPosition(
+              position
             );
-        } catch (err) {
-          console.error(
-            'Playback tracking error:',
-            err
-          );
-        }
-      }, 5000);
+
+            setDuration(
+              videoDuration
+            );
+
+            /*
+             * Record view after meaningful playback.
+             */
+
+            const threshold =
+              videoDuration > 0
+                ? Math.min(
+                    30,
+                    videoDuration *
+                      0.1
+                  )
+                : 30;
+
+            if (
+              !viewRecordedRef.current &&
+              position >=
+                threshold &&
+              viewSessionIdRef.current
+            ) {
+              viewRecordedRef.current =
+                true;
+
+              const {
+                error:
+                  viewError,
+              } =
+                await supabase.rpc(
+                  'record_episode_view',
+                  {
+                    p_episode_id:
+                      episode.id,
+
+                    p_session_id:
+                      viewSessionIdRef.current,
+                  }
+                );
+
+              if (
+                viewError
+              ) {
+                console.error(
+                  'View recording error:',
+                  viewError
+                );
+              }
+            }
+
+            /*
+             * Save watch position.
+             */
+
+            if (
+              videoDuration >
+                0 &&
+              session.user.id
+            ) {
+              await supabase
+                .from(
+                  'watch_history'
+                )
+                .upsert(
+                  {
+                    user_id:
+                      session.user.id,
+
+                    episode_id:
+                      episode.id,
+
+                    position,
+
+                    duration:
+                      videoDuration,
+
+                    updated_at:
+                      new Date().toISOString(),
+                  },
+                  {
+                    onConflict:
+                      'user_id,episode_id',
+                  }
+                );
+            }
+          } catch (err) {
+            console.error(
+              'Playback tracking error:',
+              err
+            );
+          }
+        },
+        5000
+      );
 
     return () => {
-      clearInterval(interval);
+      clearInterval(
+        interval
+      );
     };
   }, [
     isUnlocked,
@@ -794,33 +1090,202 @@ export default function PlayerScreen() {
 
   /*
    * ============================================================
-   * PLAY / PAUSE LISTENER
+   * SEEK
    * ============================================================
    */
 
-  useEffect(() => {
-    const subscription =
-      player.addListener(
-        'playingChange',
-        (event) => {
-          if (!mountedRef.current) {
+  const seekBy =
+    useCallback(
+      (seconds: number) => {
+        try {
+          const total =
+            Number(
+              player.duration
+            ) || duration || 0;
+
+          if (total <= 0) {
             return;
           }
 
-          setIsPlaying(
-            !!event.isPlaying
+          const current =
+            Number(
+              player.currentTime
+            ) || 0;
+
+          const nextPosition =
+            Math.min(
+              total,
+              Math.max(
+                0,
+                current +
+                  seconds
+              )
+            );
+
+          player.currentTime =
+            nextPosition;
+
+          setCurrentPosition(
+            nextPosition
+          );
+
+          showPlayerControls();
+        } catch (err) {
+          console.error(
+            'Seek error:',
+            err
           );
         }
-      );
-
-    return () => {
-      subscription.remove();
-    };
-  }, [player]);
+      },
+      [
+        player,
+        duration,
+        showPlayerControls,
+      ]
+    );
 
   /*
    * ============================================================
-   * AUTO NEXT EPISODE
+   * SEEK TO PROGRESS BAR POSITION
+   * ============================================================
+   */
+
+  const handleProgressPress =
+    useCallback(
+      (
+        event: any
+      ) => {
+        try {
+          if (
+            progressWidth <= 0
+          ) {
+            return;
+          }
+
+          const total =
+            Number(
+              player.duration
+            ) || duration || 0;
+
+          if (total <= 0) {
+            return;
+          }
+
+          const x =
+            event.nativeEvent
+              .locationX;
+
+          const percentage =
+            Math.max(
+              0,
+              Math.min(
+                1,
+                x /
+                  progressWidth
+              )
+            );
+
+          const nextPosition =
+            total *
+            percentage;
+
+          player.currentTime =
+            nextPosition;
+
+          setCurrentPosition(
+            nextPosition
+          );
+
+          showPlayerControls();
+        } catch (err) {
+          console.error(
+            'Progress seek error:',
+            err
+          );
+        }
+      },
+      [
+        player,
+        duration,
+        progressWidth,
+        showPlayerControls,
+      ]
+    );
+
+  /*
+   * ============================================================
+   * PLAY / PAUSE
+   * ============================================================
+   */
+
+  const togglePlayback =
+    useCallback(() => {
+      try {
+        const total =
+          Number(
+            player.duration
+          ) || duration || 0;
+
+        const current =
+          Number(
+            player.currentTime
+          ) || 0;
+
+        /*
+         * If video has finished,
+         * start it again.
+         */
+
+        if (
+          total > 0 &&
+          current >=
+            total - 0.5
+        ) {
+          player.currentTime =
+            0;
+
+          setCurrentPosition(
+            0
+          );
+
+          player.play();
+
+          setIsPlaying(true);
+
+          showPlayerControls();
+
+          return;
+        }
+
+        if (isPlaying) {
+          player.pause();
+
+          setIsPlaying(false);
+
+          setShowControls(true);
+        } else {
+          player.play();
+
+          setIsPlaying(true);
+
+          showPlayerControls();
+        }
+      } catch (err) {
+        console.error(
+          'Playback toggle error:',
+          err
+        );
+      }
+    }, [
+      player,
+      duration,
+      isPlaying,
+      showPlayerControls,
+    ]);
+
+  /*
+   * ============================================================
+   * END OF VIDEO
    * ============================================================
    */
 
@@ -829,9 +1294,25 @@ export default function PlayerScreen() {
       player.addListener(
         'playToEnd',
         () => {
-          if (!mountedRef.current) {
+          if (
+            !mountedRef.current
+          ) {
             return;
           }
+
+          setCurrentPosition(
+            Number(
+              player.duration
+            ) || duration
+          );
+
+          setIsPlaying(
+            false
+          );
+
+          setShowControls(
+            true
+          );
 
           const currentIndex =
             allEpisodes.findIndex(
@@ -840,37 +1321,38 @@ export default function PlayerScreen() {
                 episode?.id
             );
 
+          /*
+           * Automatically go to next unlocked episode.
+           */
+
           if (
-            currentIndex < 0 ||
-            currentIndex >=
-              allEpisodes.length - 1
+            currentIndex >= 0 &&
+            currentIndex <
+              allEpisodes.length -
+                1
           ) {
-            return;
-          }
+            const nextEpisode =
+              allEpisodes[
+                currentIndex + 1
+              ];
 
-          const nextEp =
-            allEpisodes[
-              currentIndex + 1
-            ];
+            const nextUnlocked =
+              nextEpisode.is_free ===
+                true ||
+              series?.is_free ===
+                true ||
+              hasSubscription ||
+              unlockedEpisodeIds.has(
+                nextEpisode.id
+              );
 
-          const nextUnlocked =
-            nextEp.is_free === true ||
-            series?.is_free === true ||
-            hasSubscription ||
-            unlockedEpisodeIds.has(
-              nextEp.id
-            );
-
-          if (nextUnlocked) {
-            router.replace(
-              `/player/${nextEp.id}`
-            );
-          } else {
-            /*
-             * Stop at locked episode.
-             */
-
-            setIsPlaying(false);
+            if (
+              nextUnlocked
+            ) {
+              router.replace(
+                `/player/${nextEpisode.id}`
+              );
+            }
           }
         }
       );
@@ -880,161 +1362,13 @@ export default function PlayerScreen() {
     };
   }, [
     player,
+    duration,
     allEpisodes,
     episode?.id,
+    series?.is_free,
     hasSubscription,
     unlockedEpisodeIds,
-    series?.is_free,
   ]);
-
-  /*
-   * ============================================================
-   * UNLOCK EPISODE
-   * ============================================================
-   */
-
-  const handleUnlock =
-    useCallback(async () => {
-      if (!session?.user?.id) {
-        Alert.alert(
-          'Sign in required',
-          'Please sign in to unlock episodes.'
-        );
-
-        router.push('/auth/login');
-
-        return;
-      }
-
-      if (!episode) {
-        return;
-      }
-
-      Alert.alert(
-        'Unlock Episode',
-        `Unlock "${episode.title}" for ${episode.coin_price} coins?`,
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-          {
-            text: 'Unlock',
-            onPress: async () => {
-              try {
-                const {
-                  data,
-                  error: unlockError,
-                } = await supabase.rpc(
-                  'unlock_episode',
-                  {
-                    p_episode_id:
-                      episode.id,
-                  }
-                );
-
-                if (unlockError) {
-                  console.error(
-                    'Unlock error:',
-                    unlockError
-                  );
-
-                  Alert.alert(
-                    'Error',
-                    unlockError.message ||
-                      'Failed to unlock episode.'
-                  );
-
-                  return;
-                }
-
-                const result =
-                  data as
-                    | {
-                        success?: boolean;
-                        message?: string;
-                      }
-                    | null;
-
-                if (
-                  !result?.success
-                ) {
-                  Alert.alert(
-                    'Cannot unlock',
-                    result?.message ||
-                      'Insufficient coins.'
-                  );
-
-                  return;
-                }
-
-                /*
-                 * Update local entitlement.
-                 */
-
-                if (!mountedRef.current) {
-                  return;
-                }
-
-                setIsUnlocked(true);
-
-                setUnlockedEpisodeIds(
-                  (previous) => {
-                    const next =
-                      new Set(
-                        previous
-                      );
-
-                    next.add(
-                      episode.id
-                    );
-
-                    return next;
-                  }
-                );
-
-                /*
-                 * Load secure video.
-                 */
-
-                const videoLoaded =
-                  await loadVideo(
-                    episode.id
-                  );
-
-                if (!videoLoaded) {
-                  Alert.alert(
-                    'Video error',
-                    'Episode unlocked successfully, but the secure video could not be loaded.'
-                  );
-
-                  return;
-                }
-
-                Alert.alert(
-                  'Success',
-                  'Episode unlocked!'
-                );
-              } catch (err) {
-                console.error(
-                  'Unlock exception:',
-                  err
-                );
-
-                Alert.alert(
-                  'Error',
-                  'Something went wrong while unlocking the episode.'
-                );
-              }
-            },
-          },
-        ]
-      );
-    }, [
-      session?.user?.id,
-      episode,
-      loadVideo,
-    ]);
 
   /*
    * ============================================================
@@ -1047,23 +1381,24 @@ export default function PlayerScreen() {
       (ep: Episode) => {
         const unlocked =
           ep.is_free === true ||
-          series?.is_free === true ||
+          series?.is_free ===
+            true ||
           hasSubscription ||
           unlockedEpisodeIds.has(
             ep.id
           );
 
-        if (!unlocked) {
-          Alert.alert(
-            'Locked',
-            'This episode is locked. Unlock it first.'
+        if (unlocked) {
+          router.replace(
+            `/player/${ep.id}`
           );
 
           return;
         }
 
-        router.replace(
-          `/player/${ep.id}`
+        Alert.alert(
+          'Episode locked',
+          `Unlock this episode for ${ep.coin_price} coins.`
         );
       },
       [
@@ -1075,89 +1410,113 @@ export default function PlayerScreen() {
 
   /*
    * ============================================================
-   * CONTROLS
+   * UNLOCK EPISODE
    * ============================================================
    */
 
-  const toggleControls =
-    useCallback(() => {
-      setShowControls(
-        (previous) => {
-          const next = !previous;
+  const handleUnlock =
+    useCallback(
+      async () => {
+        if (
+          !session?.user?.id
+        ) {
+          Alert.alert(
+            'Sign in required',
+            'Please sign in to unlock episodes.'
+          );
 
-          if (
-            next &&
-            isPlaying
-          ) {
-            if (
-              controlsTimer.current
-            ) {
-              clearTimeout(
-                controlsTimer.current
-              );
-            }
+          router.push(
+            '/auth/login'
+          );
 
-            controlsTimer.current =
-              setTimeout(() => {
-                if (
-                  mountedRef.current
-                ) {
-                  setShowControls(
-                    false
-                  );
-                }
-              }, 4000);
-          }
-
-          return next;
+          return;
         }
-      );
-    }, [isPlaying]);
 
-  useEffect(() => {
-    if (
-      controlsTimer.current
-    ) {
-      clearTimeout(
-        controlsTimer.current
-      );
+        if (!episode) {
+          return;
+        }
 
-      controlsTimer.current =
-        null;
-    }
+        Alert.alert(
+          'Unlock Episode',
+          `Unlock "${episode.title}" for ${episode.coin_price} coins?`,
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
 
-    if (
-      showControls &&
-      isPlaying
-    ) {
-      controlsTimer.current =
-        setTimeout(() => {
-          if (
-            mountedRef.current
-          ) {
-            setShowControls(
-              false
-            );
-          }
-        }, 4000);
-    }
+            {
+              text: 'Unlock',
+              onPress:
+                async () => {
+                  try {
+                    const {
+                      data,
+                      error:
+                        unlockError,
+                    } =
+                      await supabase.rpc(
+                        'unlock_episode',
+                        {
+                          p_episode_id:
+                            episode.id,
+                        }
+                      );
 
-    return () => {
-      if (
-        controlsTimer.current
-      ) {
-        clearTimeout(
-          controlsTimer.current
+                    if (
+                      unlockError
+                    ) {
+                      console.error(
+                        'Unlock error:',
+                        unlockError
+                      );
+
+                      Alert.alert(
+                        'Unlock failed',
+                        unlockError.message ||
+                          'Unable to unlock this episode.'
+                      );
+
+                      return;
+                    }
+
+                    console.log(
+                      'Unlock result:',
+                      data
+                    );
+
+                    Alert.alert(
+                      'Unlocked',
+                      'The episode has been unlocked.'
+                    );
+
+                    /*
+                     * Reload access state + video.
+                     */
+
+                    await fetchData();
+                  } catch (err) {
+                    console.error(
+                      'Unlock exception:',
+                      err
+                    );
+
+                    Alert.alert(
+                      'Unlock failed',
+                      'Something went wrong while unlocking the episode.'
+                    );
+                  }
+                },
+            },
+          ]
         );
-
-        controlsTimer.current =
-          null;
-      }
-    };
-  }, [
-    showControls,
-    isPlaying,
-  ]);
+      },
+      [
+        session?.user?.id,
+        episode,
+        fetchData,
+      ]
+    );
 
   /*
    * ============================================================
@@ -1165,36 +1524,59 @@ export default function PlayerScreen() {
    * ============================================================
    */
 
-  const formatTime = (
-    seconds: number
-  ) => {
-    if (
-      !Number.isFinite(
-        seconds
-      ) ||
-      seconds <= 0
-    ) {
-      return '0:00';
-    }
+  const formatTime =
+    useCallback(
+      (seconds: number) => {
+        if (
+          !Number.isFinite(
+            seconds
+          ) ||
+          seconds < 0
+        ) {
+          return '0:00';
+        }
 
-    const minutes =
-      Math.floor(
-        seconds / 60
-      );
+        const totalSeconds =
+          Math.floor(seconds);
 
-    const remainingSeconds =
-      Math.floor(
-        seconds % 60
-      );
+        const minutes =
+          Math.floor(
+            totalSeconds /
+              60
+          );
 
-    return `${minutes}:${remainingSeconds
-      .toString()
-      .padStart(2, '0')}`;
-  };
+        const remaining =
+          totalSeconds % 60;
+
+        return `${minutes}:${String(
+          remaining
+        ).padStart(2, '0')}`;
+      },
+      []
+    );
 
   /*
    * ============================================================
-   * EPISODE NAVIGATION
+   * PROGRESS LAYOUT
+   * ============================================================
+   */
+
+  const handleProgressLayout =
+    useCallback(
+      (
+        event: LayoutChangeEvent
+      ) => {
+        setProgressWidth(
+          event.nativeEvent
+            .layout.width
+        );
+      },
+      []
+    );
+
+  /*
+   * ============================================================
+   * PREVIOUS / NEXT
    * ============================================================
    */
 
@@ -1231,9 +1613,17 @@ export default function PlayerScreen() {
     return (
       <View
         style={
-          styles.container
+          styles.loadingContainer
         }
-      />
+      >
+        <Text
+          style={
+            styles.loadingText
+          }
+        >
+          Loading episode...
+        </Text>
+      </View>
     );
   }
 
@@ -1248,59 +1638,84 @@ export default function PlayerScreen() {
     !episode
   ) {
     return (
-      <ErrorState
-        message="Failed to load episode."
-        onRetry={fetchData}
-      />
+      <View
+        style={
+          styles.errorContainer
+        }
+      >
+        <Text
+          style={
+            styles.errorTitle
+          }
+        >
+          Unable to load episode
+        </Text>
+
+        <TouchableOpacity
+          style={
+            styles.retryButton
+          }
+          onPress={() =>
+            fetchData()
+          }
+        >
+          <Text
+            style={
+              styles.retryButtonText
+            }
+          >
+            Try Again
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={
+            styles.backButtonError
+          }
+          onPress={() =>
+            router.back()
+          }
+        >
+          <Text
+            style={
+              styles.backButtonText
+            }
+          >
+            Go Back
+          </Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 
   /*
    * ============================================================
-   * PROGRESS
-   * ============================================================
-   */
-
-  const progress =
-    duration > 0
-      ? Math.min(
-          100,
-          Math.max(
-            0,
-            (currentPosition /
-              duration) *
-              100
-          )
-        )
-      : 0;
-
-  /*
-   * ============================================================
-   * RENDER
+   * MAIN
    * ============================================================
    */
 
   return (
     <View
-      style={
-        styles.container
-      }
+      style={[
+        styles.container,
+        isFullscreen &&
+          styles.fullscreenContainer,
+      ]}
     >
       <StatusBar
-        hidden={
-          isFullscreen
-        }
+        hidden={isFullscreen}
+        barStyle="light-content"
       />
 
       {/* ======================================================
-          VIDEO PLAYER
+          VIDEO AREA
           ====================================================== */}
 
       <View
         style={[
-          styles.playerContainer,
+          styles.videoContainer,
           isFullscreen &&
-            styles.playerFullscreen,
+            styles.videoContainerFullscreen,
         ]}
       >
         {isUnlocked ? (
@@ -1308,216 +1723,313 @@ export default function PlayerScreen() {
             <VideoView
               player={player}
               style={
-                isFullscreen
-                  ? styles.videoFullscreen
-                  : styles.video
+                styles.video
+              }
+              nativeControls={
+                false
               }
               contentFit="contain"
-              nativeControls={false}
-              onFullscreenEnter={() =>
-                setIsFullscreen(
-                  true
-                )
-              }
-              onFullscreenExit={() =>
-                setIsFullscreen(
-                  false
-                )
+              allowsFullscreen={
+                false
               }
             />
 
-            {/* Transparent touch layer */}
+            {/* =================================================
+                TRANSPARENT TOUCH AREA
+                ================================================= */}
 
             <TouchableOpacity
-              style={
-                styles.videoOverlay
-              }
-              onPress={
-                toggleControls
-              }
               activeOpacity={1}
+              style={
+                styles.videoTouchArea
+              }
+              onPress={() => {
+                if (
+                  showControls
+                ) {
+                  setShowControls(
+                    false
+                  );
+
+                  if (
+                    controlsTimer.current
+                  ) {
+                    clearTimeout(
+                      controlsTimer.current
+                    );
+                  }
+                } else {
+                  showPlayerControls();
+                }
+              }}
             />
+
+            {/* =================================================
+                TOP BAR
+                ================================================= */}
 
             {showControls && (
               <View
                 style={
-                  styles.controlsOverlay
+                  styles.topBar
                 }
               >
-                {/* TOP CONTROLS */}
+                <TouchableOpacity
+                  style={
+                    styles.backButton
+                  }
+                  onPress={() => {
+                    if (
+                      isFullscreen
+                    ) {
+                      setIsFullscreen(
+                        false
+                      );
+
+                      return;
+                    }
+
+                    router.back();
+                  }}
+                >
+                  <ChevronLeft
+                    size={30}
+                    color={
+                      Colors.dark
+                        .text
+                    }
+                    strokeWidth={
+                      2.5
+                    }
+                  />
+                </TouchableOpacity>
+
+                <Text
+                  numberOfLines={1}
+                  style={
+                    styles.videoTitle
+                  }
+                >
+                  {episode.title}
+                </Text>
 
                 <View
                   style={
-                    styles.controlsTop
+                    styles.topSpacer
+                  }
+                />
+              </View>
+            )}
+
+            {/* =================================================
+                CENTER CONTROLS
+                ================================================= */}
+
+            {showControls && (
+              <View
+                pointerEvents="box-none"
+                style={
+                  styles.centerControls
+                }
+              >
+                {/* REWIND */}
+
+                <TouchableOpacity
+                  style={
+                    styles.seekCircle
+                  }
+                  onPress={() =>
+                    seekBy(-10)
                   }
                 >
-                  <TouchableOpacity
+                  <Text
                     style={
-                      styles.controlButton
+                      styles.seekArrow
                     }
-                    onPress={() => {
-                      if (
-                        isFullscreen
-                      ) {
-                        setIsFullscreen(
-                          false
-                        );
-                      } else {
-                        router.back();
-                      }
-                    }}
                   >
-                    <ChevronLeft
-                      size={24}
+                    ↶
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.seekNumber
+                    }
+                  >
+                    10
+                  </Text>
+                </TouchableOpacity>
+
+                {/* PLAY / PAUSE */}
+
+                <TouchableOpacity
+                  style={
+                    styles.playCircle
+                  }
+                  onPress={
+                    togglePlayback
+                  }
+                >
+                  {isPlaying ? (
+                    <Text
+                      style={
+                        styles.pauseText
+                      }
+                    >
+                      ❚❚
+                    </Text>
+                  ) : (
+                    <Play
+                      size={34}
                       color={
                         Colors.dark
                           .text
                       }
-                      strokeWidth={
-                        2
+                      fill={
+                        Colors.dark
+                          .text
                       }
                     />
-                  </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
 
-                  <Text
-                    style={
-                      styles.episodeLabel
-                    }
-                    numberOfLines={
-                      1
-                    }
-                  >
-                    {series?.title ||
-                      'DramaRush'}{' '}
-                    - Ep{' '}
-                    {
-                      episode.episode_number
-                    }
-                  </Text>
-
-                  <View
-                    style={{
-                      width: 40,
-                    }}
-                  />
-                </View>
-
-                {/* CENTER PLAY */}
+                {/* FORWARD */}
 
                 <TouchableOpacity
                   style={
-                    styles.centerPlayButton
+                    styles.seekCircle
                   }
-                  onPress={() => {
-                    try {
-                      if (
-                        isPlaying
-                      ) {
-                        player.pause();
-                      } else {
-                        player.play();
-                      }
-                    } catch (err) {
-                      console.error(
-                        'Play/pause error:',
-                        err
-                      );
+                  onPress={() =>
+                    seekBy(10)
+                  }
+                >
+                  <Text
+                    style={
+                      styles.seekArrow
                     }
-                  }}
+                  >
+                    ↷
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.seekNumber
+                    }
+                  >
+                    10
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* =================================================
+                BOTTOM CONTROLS
+                ================================================= */}
+
+            {showControls && (
+              <View
+                style={
+                  styles.bottomControls
+                }
+              >
+                {/* PROGRESS */}
+
+                <TouchableOpacity
+                  activeOpacity={
+                    1
+                  }
+                  onLayout={
+                    handleProgressLayout
+                  }
+                  onPress={
+                    handleProgressPress
+                  }
+                  style={
+                    styles.progressContainer
+                  }
                 >
                   <View
                     style={
-                      styles.centerPlayCircle
+                      styles.progressTrack
                     }
                   >
-                    {isPlaying ? (
-                      <Text
-                        style={
-                          styles.pauseIcon
-                        }
-                      >
-                        ❚❚
-                      </Text>
-                    ) : (
-                      <Play
-                        size={28}
-                        color={
-                          Colors.dark
-                            .text
-                        }
-                        strokeWidth={
-                          2
-                        }
-                        fill={
-                          Colors.dark
-                            .text
-                        }
-                      />
-                    )}
+                    <View
+                      style={[
+                        styles.progressFill,
+                        {
+                          width:
+                            duration >
+                              0 &&
+                            progressWidth >
+                              0
+                              ? `${Math.min(
+                                  100,
+                                  Math.max(
+                                    0,
+                                    (currentPosition /
+                                      duration) *
+                                      100
+                                  )
+                                )}%`
+                              : '0%',
+                        },
+                      ]}
+                    />
                   </View>
+
+                  <View
+                    style={[
+                      styles.progressThumb,
+                      {
+                        left:
+                          duration >
+                            0 &&
+                          progressWidth >
+                            0
+                            ? Math.max(
+                                0,
+                                Math.min(
+                                  progressWidth -
+                                    14,
+                                  (currentPosition /
+                                    duration) *
+                                    progressWidth -
+                                    7
+                                )
+                              )
+                            : 0,
+                      },
+                    ]}
+                  />
                 </TouchableOpacity>
 
-                {/* BOTTOM CONTROLS */}
+                {/* TIME + BUTTONS */}
 
                 <View
                   style={
-                    styles.controlsBottom
+                    styles.controlsRow
                   }
                 >
-                  {/* Progress */}
+                  <Text
+                    style={
+                      styles.timeText
+                    }
+                  >
+                    {formatTime(
+                      currentPosition
+                    )}
+                  </Text>
 
                   <View
                     style={
-                      styles.progressContainer
+                      styles.bottomCenterButtons
                     }
                   >
-                    <Text
-                      style={
-                        styles.timeText
-                      }
-                    >
-                      {formatTime(
-                        currentPosition
-                      )}
-                    </Text>
+                    {/* PREVIOUS */}
 
-                    <View
-                      style={
-                        styles.progressBar
-                      }
-                    >
-                      <View
-                        style={[
-                          styles.progressFill,
-                          {
-                            width: `${progress}%`,
-                          },
-                        ]}
-                      />
-                    </View>
-
-                    <Text
-                      style={
-                        styles.timeText
-                      }
-                    >
-                      {formatTime(
-                        duration
-                      )}
-                    </Text>
-                  </View>
-
-                  {/* Navigation */}
-
-                  <View
-                    style={
-                      styles.bottomControls
-                    }
-                  >
                     {prevEpisode ? (
                       <TouchableOpacity
                         style={
-                          styles.navButton
+                          styles.smallNavButton
                         }
                         onPress={() =>
                           goToEpisode(
@@ -1526,19 +2038,17 @@ export default function PlayerScreen() {
                         }
                       >
                         <ChevronLeft
-                          size={20}
+                          size={22}
                           color={
-                            Colors.dark
+                            Colors
+                              .dark
                               .text
-                          }
-                          strokeWidth={
-                            2
                           }
                         />
 
                         <Text
                           style={
-                            styles.navButtonText
+                            styles.smallButtonText
                           }
                         >
                           Previous
@@ -1547,10 +2057,12 @@ export default function PlayerScreen() {
                     ) : (
                       <View
                         style={{
-                          width: 80,
+                          width: 82,
                         }}
                       />
                     )}
+
+                    {/* FULLSCREEN */}
 
                     <TouchableOpacity
                       style={
@@ -1573,10 +2085,12 @@ export default function PlayerScreen() {
                       </Text>
                     </TouchableOpacity>
 
+                    {/* NEXT */}
+
                     {nextEpisode ? (
                       <TouchableOpacity
                         style={
-                          styles.navButton
+                          styles.smallNavButton
                         }
                         onPress={() =>
                           goToEpisode(
@@ -1586,31 +2100,39 @@ export default function PlayerScreen() {
                       >
                         <Text
                           style={
-                            styles.navButtonText
+                            styles.smallButtonText
                           }
                         >
                           Next
                         </Text>
 
                         <ChevronRight
-                          size={20}
+                          size={22}
                           color={
-                            Colors.dark
+                            Colors
+                              .dark
                               .text
-                          }
-                          strokeWidth={
-                            2
                           }
                         />
                       </TouchableOpacity>
                     ) : (
                       <View
                         style={{
-                          width: 80,
+                          width: 82,
                         }}
                       />
                     )}
                   </View>
+
+                  <Text
+                    style={
+                      styles.timeText
+                    }
+                  >
+                    {formatTime(
+                      duration
+                    )}
+                  </Text>
                 </View>
               </View>
             )}
@@ -1653,7 +2175,9 @@ export default function PlayerScreen() {
               }
             >
               Unlock it with{' '}
-              {episode.coin_price}{' '}
+              {
+                episode.coin_price
+              }{' '}
               coins to watch
             </Text>
 
@@ -1668,7 +2192,8 @@ export default function PlayerScreen() {
               <Coins
                 size={18}
                 color={
-                  Colors.dark.text
+                  Colors.dark
+                    .text
                 }
                 strokeWidth={2}
               />
@@ -1679,7 +2204,9 @@ export default function PlayerScreen() {
                 }
               >
                 Unlock for{' '}
-                {episode.coin_price}
+                {
+                  episode.coin_price
+                }
               </Text>
             </TouchableOpacity>
           </View>
@@ -1690,406 +2217,479 @@ export default function PlayerScreen() {
           EPISODE INFORMATION
           ====================================================== */}
 
-      {!isFullscreen && (
-        <View
-          style={
-            styles.infoContainer
-          }
-        >
-          <Text
+      {!isFullscreen &&
+        isUnlocked && (
+          <View
             style={
-              styles.infoTitle
+              styles.infoContainer
             }
           >
-            {episode.title}
-          </Text>
-
-          {episode.description ? (
             <Text
               style={
-                styles.infoDescription
+                styles.infoTitle
               }
             >
-              {episode.description}
+              {episode.title}
             </Text>
-          ) : null}
 
-          {nextEpisode && (
-            <TouchableOpacity
-              style={
-                styles.nextEpisodeButton
-              }
-              onPress={() =>
-                goToEpisode(
-                  nextEpisode
-                )
-              }
-            >
-              <SkipForward
-                size={18}
-                color={
-                  Colors.dark.text
-                }
-                strokeWidth={2}
-              />
-
-              <View
+            {episode.description ? (
+              <Text
                 style={
-                  styles.nextEpisodeInfo
+                  styles.infoDescription
                 }
               >
-                <Text
-                  style={
-                    styles.nextEpisodeLabel
-                  }
-                >
-                  Next Episode
-                </Text>
-
-                <Text
-                  style={
-                    styles.nextEpisodeTitle
-                  }
-                  numberOfLines={1}
-                >
-                  {
-                    nextEpisode.title
-                  }
-                </Text>
-              </View>
-
-              <ChevronRight
-                size={20}
-                color={
-                  Colors.dark
-                    .textMuted
+                {
+                  episode.description
                 }
-                strokeWidth={2}
-              />
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+              </Text>
+            ) : null}
+
+            <View
+              style={
+                styles.episodeMeta
+              }
+            >
+              <Text
+                style={
+                  styles.metaText
+                }
+              >
+                Episode{' '}
+                {
+                  episode.episode_number
+                }
+              </Text>
+
+              <Text
+                style={
+                  styles.metaText
+                }
+              >
+                •
+              </Text>
+
+              <Text
+                style={
+                  styles.metaText
+                }
+              >
+                {formatTime(
+                  duration ||
+                    Number(
+                      episode.duration
+                    ) ||
+                    0
+                )}
+              </Text>
+            </View>
+          </View>
+        )}
     </View>
   );
 }
 
-/* ============================================================
-   STYLES
-   ============================================================ */
+/*
+ * ==============================================================
+ * STYLES
+ * ==============================================================
+ */
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor:
-      Colors.dark.background,
-  },
+const styles =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor:
+        Colors.dark.background,
+    },
 
-  playerContainer: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    backgroundColor: '#000',
-    position: 'relative',
-  },
+    fullscreenContainer: {
+      backgroundColor:
+        '#000',
+    },
 
-  playerFullscreen: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    aspectRatio: undefined,
-    zIndex: 100,
-    elevation: 100,
-  },
+    videoContainer: {
+      width: '100%',
+      height: 300,
+      backgroundColor:
+        '#000',
+      position: 'relative',
+    },
 
-  video: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
+    videoContainerFullscreen: {
+      ...StyleSheet.absoluteFillObject,
+      height: undefined,
+      zIndex: 100,
+    },
 
-  videoFullscreen: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-  },
+    video: {
+      width: '100%',
+      height: '100%',
+      backgroundColor:
+        '#000',
+    },
 
-  videoOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
+    videoTouchArea: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 2,
+    },
 
-  controlsOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent:
-      'space-between',
-  },
+    topBar: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      minHeight: 62,
+      paddingHorizontal: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor:
+        'rgba(0,0,0,0.55)',
+      zIndex: 10,
+    },
 
-  controlsTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent:
-      'space-between',
-    padding: 16,
-    paddingTop:
-      Platform.OS === 'android'
-        ? 32
-        : 48,
-    backgroundColor:
-      'rgba(0,0,0,0.45)',
-  },
+    backButton: {
+      width: 44,
+      height: 44,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+    },
 
-  controlButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent:
-      'center',
-    backgroundColor:
-      'rgba(0,0,0,0.55)',
-  },
+    videoTitle: {
+      flex: 1,
+      marginHorizontal: 8,
+      color: Colors.dark.text,
+      fontSize: 17,
+      fontWeight: '600',
+      textAlign: 'center',
+    },
 
-  episodeLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily:
-      'Cairo-SemiBold',
-    color:
-      Colors.dark.text,
-    textAlign: 'center',
-    marginHorizontal: 8,
-  },
+    topSpacer: {
+      width: 44,
+    },
 
-  centerPlayButton: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent:
-      'center',
-  },
+    centerControls: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 70,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      flexDirection: 'row',
+      gap: 34,
+      zIndex: 8,
+    },
 
-  centerPlayCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor:
-      'rgba(0,0,0,0.65)',
-    alignItems: 'center',
-    justifyContent:
-      'center',
-    borderWidth: 2,
-    borderColor:
-      'rgba(255,255,255,0.3)',
-  },
+    playCircle: {
+      width: 76,
+      height: 76,
+      borderRadius: 38,
+      borderWidth: 2,
+      borderColor:
+        'rgba(255,255,255,0.55)',
+      backgroundColor:
+        'rgba(0,0,0,0.45)',
+      alignItems: 'center',
+      justifyContent:
+        'center',
+    },
 
-  pauseIcon: {
-    fontSize: 22,
-    color:
-      Colors.dark.text,
-    fontWeight: 'bold',
-    letterSpacing: -2,
-  },
+    pauseText: {
+      color: Colors.dark.text,
+      fontSize: 25,
+      fontWeight: '700',
+      letterSpacing: 2,
+    },
 
-  controlsBottom: {
-    padding: 16,
-    gap: 12,
-    backgroundColor:
-      'rgba(0,0,0,0.35)',
-  },
+    seekCircle: {
+      width: 54,
+      height: 54,
+      borderRadius: 27,
+      backgroundColor:
+        'rgba(0,0,0,0.55)',
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      position: 'relative',
+    },
 
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
+    seekArrow: {
+      color: Colors.dark.text,
+      fontSize: 25,
+      lineHeight: 25,
+      fontWeight: '600',
+    },
 
-  timeText: {
-    fontSize: 12,
-    fontFamily:
-      'Cairo-Regular',
-    color:
-      Colors.dark.text,
-    minWidth: 38,
-  },
+    seekNumber: {
+      position: 'absolute',
+      color: Colors.dark.text,
+      fontSize: 9,
+      fontWeight: '800',
+      top: 25,
+    },
 
-  progressBar: {
-    flex: 1,
-    height: 4,
-    backgroundColor:
-      'rgba(255,255,255,0.3)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
+    bottomControls: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      paddingTop: 8,
+      backgroundColor:
+        'rgba(0,0,0,0.72)',
+      zIndex: 10,
+    },
 
-  progressFill: {
-    height: '100%',
-    backgroundColor:
-      Colors.primary[500],
-    borderRadius: 2,
-  },
+    progressContainer: {
+      width: '100%',
+      height: 22,
+      justifyContent:
+        'center',
+      position: 'relative',
+    },
 
-  bottomControls: {
-    flexDirection: 'row',
-    justifyContent:
-      'space-between',
-    alignItems: 'center',
-  },
+    progressTrack: {
+      width: '100%',
+      height: 4,
+      borderRadius: 2,
+      backgroundColor:
+        'rgba(255,255,255,0.28)',
+      overflow: 'hidden',
+    },
 
-  navButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minWidth: 80,
-  },
+    progressFill: {
+      height: '100%',
+      borderRadius: 2,
+      backgroundColor:
+        Colors.primary[500],
+    },
 
-  navButtonText: {
-    fontSize: 13,
-    fontFamily:
-      'Cairo-SemiBold',
-    color:
-      Colors.dark.text,
-  },
+    progressThumb: {
+      position: 'absolute',
+      top: 5,
+      width: 14,
+      height: 14,
+      borderRadius: 7,
+      backgroundColor:
+        Colors.primary[500],
+    },
 
-  fullscreenButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor:
-      'rgba(255,255,255,0.15)',
-  },
+    controlsRow: {
+      minHeight: 42,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent:
+        'space-between',
+    },
 
-  fullscreenText: {
-    fontSize: 12,
-    fontFamily:
-      'Cairo-SemiBold',
-    color:
-      Colors.dark.text,
-  },
+    bottomCenterButtons: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      gap: 8,
+    },
 
-  lockedContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent:
-      'center',
-    gap: 16,
-    padding: 32,
-  },
+    timeText: {
+      width: 48,
+      color: Colors.dark.text,
+      fontSize: 12,
+      fontWeight: '500',
+      textAlign: 'center',
+    },
 
-  lockedIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor:
-      'rgba(249,115,22,0.15)',
-    alignItems: 'center',
-    justifyContent:
-      'center',
-  },
+    smallNavButton: {
+      minWidth: 82,
+      height: 38,
+      paddingHorizontal: 7,
+      borderRadius: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      backgroundColor:
+        'rgba(255,255,255,0.08)',
+    },
 
-  lockedTitle: {
-    fontSize: 20,
-    fontFamily:
-      'Cairo-Bold',
-    color:
-      Colors.dark.text,
-    textAlign: 'center',
-  },
+    smallButtonText: {
+      color: Colors.dark.text,
+      fontSize: 11,
+      fontWeight: '600',
+    },
 
-  lockedSubtitle: {
-    fontSize: 14,
-    fontFamily:
-      'Cairo-Regular',
-    color:
-      Colors.dark.textSecondary,
-    textAlign: 'center',
-  },
+    fullscreenButton: {
+      height: 38,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      backgroundColor:
+        'rgba(255,255,255,0.08)',
+    },
 
-  unlockButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent:
-      'center',
-    gap: 8,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor:
-      Colors.primary[500],
-    marginTop: 4,
-  },
+    fullscreenText: {
+      color: Colors.dark.text,
+      fontSize: 11,
+      fontWeight: '600',
+    },
 
-  unlockButtonText: {
-    fontSize: 14,
-    fontFamily:
-      'Cairo-Bold',
-    color:
-      Colors.dark.text,
-  },
+    lockedContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      padding: 24,
+      backgroundColor:
+        Colors.dark.background,
+    },
 
-  infoContainer: {
-    flex: 1,
-    padding: 16,
-  },
+    lockedIconContainer: {
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      backgroundColor:
+        'rgba(255,255,255,0.04)',
+      marginBottom: 18,
+    },
 
-  infoTitle: {
-    fontSize: 20,
-    fontFamily:
-      'Cairo-Bold',
-    color:
-      Colors.dark.text,
-    marginBottom: 8,
-  },
+    lockedTitle: {
+      color: Colors.dark.text,
+      fontSize: 21,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginBottom: 8,
+    },
 
-  infoDescription: {
-    fontSize: 14,
-    lineHeight: 22,
-    fontFamily:
-      'Cairo-Regular',
-    color:
-      Colors.dark.textSecondary,
-    marginBottom: 20,
-  },
+    lockedSubtitle: {
+      color: Colors.dark.muted,
+      fontSize: 14,
+      textAlign: 'center',
+      marginBottom: 22,
+    },
 
-  nextEpisodeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor:
-      Colors.dark.surface,
-  },
+    unlockButton: {
+      minHeight: 48,
+      paddingHorizontal: 22,
+      borderRadius: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      gap: 8,
+      backgroundColor:
+        Colors.primary[500],
+    },
 
-  nextEpisodeInfo: {
-    flex: 1,
-  },
+    unlockButtonText: {
+      color: Colors.dark.text,
+      fontSize: 14,
+      fontWeight: '700',
+    },
 
-  nextEpisodeLabel: {
-    fontSize: 12,
-    fontFamily:
-      'Cairo-Regular',
-    color:
-      Colors.dark.textMuted,
-    marginBottom: 2,
-  },
+    infoContainer: {
+      flex: 1,
+      padding: 18,
+      backgroundColor:
+        Colors.dark.background,
+    },
 
-  nextEpisodeTitle: {
-    fontSize: 14,
-    fontFamily:
-      'Cairo-SemiBold',
-    color:
-      Colors.dark.text,
-  },
-});
+    infoTitle: {
+      color: Colors.dark.text,
+      fontSize: 20,
+      fontWeight: '700',
+      marginBottom: 10,
+    },
+
+    infoDescription: {
+      color: Colors.dark.muted,
+      fontSize: 14,
+      lineHeight: 21,
+      marginBottom: 14,
+    },
+
+    episodeMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+
+    metaText: {
+      color: Colors.dark.muted,
+      fontSize: 12,
+    },
+
+    loadingContainer: {
+      flex: 1,
+      backgroundColor:
+        Colors.dark.background,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+    },
+
+    loadingText: {
+      color: Colors.dark.text,
+      fontSize: 16,
+    },
+
+    errorContainer: {
+      flex: 1,
+      backgroundColor:
+        Colors.dark.background,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      padding: 24,
+    },
+
+    errorTitle: {
+      color: Colors.dark.text,
+      fontSize: 18,
+      fontWeight: '700',
+      marginBottom: 18,
+      textAlign: 'center',
+    },
+
+    retryButton: {
+      minWidth: 130,
+      minHeight: 46,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      backgroundColor:
+        Colors.primary[500],
+      marginBottom: 10,
+    },
+
+    retryButtonText: {
+      color: Colors.dark.text,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+
+    backButtonError: {
+      minWidth: 130,
+      minHeight: 44,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent:
+        'center',
+      backgroundColor:
+        'rgba(255,255,255,0.08)',
+    },
+
+    backButtonText: {
+      color: Colors.dark.text,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+  });
