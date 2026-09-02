@@ -191,14 +191,15 @@ Deno.serve(async (req) => {
        ======================================================== */
 
     const {
-      data: allowed,
-      error: entitlementError,
-    } = await admin.rpc(
-      'can_watch_episode',
-      {
-        p_episode_id: episodeId,
-      },
-    );
+  data: allowed,
+  error: entitlementError,
+} = await admin.rpc(
+  'can_watch_episode_for_user',
+  {
+    p_user_id: userData.user.id,
+    p_episode_id: episodeId,
+  },
+);
 
     if (entitlementError) {
       console.error(
