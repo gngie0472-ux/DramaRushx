@@ -7,15 +7,8 @@ import {
 } from 'react-native';
 
 import { LinearGradient } from 'expo-linear-gradient';
-
 import { Colors } from '@/lib/theme';
-
-import {
-  Star,
-  Lock,
-  Play,
-} from 'lucide-react-native';
-
+import { Star, Lock, Play } from 'lucide-react-native';
 import type { Series } from '@/lib/types';
 
 interface SeriesCardProps {
@@ -27,34 +20,30 @@ interface SeriesCardProps {
 export function SeriesCard({
   series,
   onPress,
-  width = 110,
+  width = 150,
 }: SeriesCardProps) {
-  const imageHeight = Math.round(width * 1.42);
+  const imageHeight = Math.round(width * 1.34);
+
+  const imageUrl =
+    series.cover_image_url ||
+    series.banner_image_url ||
+    '';
 
   return (
     <TouchableOpacity
-      activeOpacity={0.85}
+      activeOpacity={0.88}
       onPress={() => onPress(series)}
-      style={[
-        styles.card,
-        {
-          width,
-        },
-      ]}
+      style={[styles.card, { width }]}
     >
       <View
         style={[
           styles.imageContainer,
-          {
-            height: imageHeight,
-          },
+          { height: imageHeight },
         ]}
       >
-        {series.cover_image_url ? (
+        {imageUrl ? (
           <ImageBackground
-            source={{
-              uri: series.cover_image_url,
-            }}
+            source={{ uri: imageUrl }}
             style={styles.image}
             imageStyle={styles.imageRadius}
             resizeMode="cover"
@@ -62,7 +51,8 @@ export function SeriesCard({
             <LinearGradient
               colors={[
                 'transparent',
-                'rgba(0,0,0,0.88)',
+                'rgba(8,8,12,0.18)',
+                'rgba(8,8,12,0.94)',
               ]}
               style={styles.gradient}
             />
@@ -71,19 +61,19 @@ export function SeriesCard({
               {series.is_free ? (
                 <View style={styles.freeBadge}>
                   <Text style={styles.freeBadgeText}>
-                    Free
+                    FREE
                   </Text>
                 </View>
               ) : (
                 <View style={styles.paidBadge}>
                   <Lock
-                    size={8}
-                    color={Colors.dark.text}
+                    size={10}
+                    color={Colors.primary[300]}
                     strokeWidth={2.5}
                   />
 
                   <Text style={styles.paidBadgeText}>
-                    Premium
+                    VIP
                   </Text>
                 </View>
               )}
@@ -92,9 +82,9 @@ export function SeriesCard({
             <View style={styles.playOverlay}>
               <View style={styles.playCircle}>
                 <Play
-                  size={15}
+                  size={18}
                   color={Colors.dark.text}
-                  strokeWidth={2}
+                  strokeWidth={2.4}
                   fill={Colors.dark.text}
                 />
               </View>
@@ -103,9 +93,10 @@ export function SeriesCard({
             <View style={styles.bottomInfo}>
               <View style={styles.ratingRow}>
                 <Star
-                  size={10}
+                  size={12}
                   color={Colors.warning[400]}
                   fill={Colors.warning[400]}
+                  strokeWidth={1.5}
                 />
 
                 <Text style={styles.ratingText}>
@@ -113,11 +104,8 @@ export function SeriesCard({
                 </Text>
               </View>
 
-              <Text
-                style={styles.episodeCount}
-                numberOfLines={1}
-              >
-                {series.total_episodes} Ep
+              <Text style={styles.episodeCount}>
+                {series.total_episodes} Episodes
               </Text>
             </View>
           </ImageBackground>
@@ -129,8 +117,9 @@ export function SeriesCard({
             ]}
           >
             <Play
-              size={24}
+              size={30}
               color={Colors.dark.textMuted}
+              strokeWidth={1.8}
             />
           </View>
         )}
@@ -138,7 +127,7 @@ export function SeriesCard({
 
       <Text
         style={styles.title}
-        numberOfLines={2}
+        numberOfLines={1}
       >
         {series.title}
       </Text>
@@ -157,16 +146,18 @@ export function SeriesCard({
 
 const styles = StyleSheet.create({
   card: {
-    gap: 4,
-    borderRadius: 10,
-    overflow: 'hidden',
+    gap: 5,
   },
 
   imageContainer: {
     width: '100%',
-    borderRadius: 10,
+    borderRadius: 13,
     overflow: 'hidden',
-    backgroundColor: Colors.dark.surfaceLight,
+    backgroundColor:
+      Colors.dark.surfaceLight,
+    borderWidth: 1,
+    borderColor:
+      'rgba(255,255,255,0.06)',
   },
 
   image: {
@@ -175,7 +166,7 @@ const styles = StyleSheet.create({
   },
 
   imageRadius: {
-    borderRadius: 10,
+    borderRadius: 13,
   },
 
   gradient: {
@@ -183,27 +174,25 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: '45%',
+    height: '62%',
   },
 
   badges: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    left: 6,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    top: 9,
+    right: 9,
   },
 
   freeBadge: {
-    backgroundColor: Colors.success[600],
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 5,
+    backgroundColor:
+      Colors.success[600],
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 7,
   },
 
   freeBadgeText: {
-    fontSize: 8,
+    fontSize: 9,
     fontFamily: 'Cairo-Bold',
     color: Colors.dark.text,
   },
@@ -211,17 +200,21 @@ const styles = StyleSheet.create({
   paidBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 5,
+    gap: 4,
+    backgroundColor:
+      'rgba(20,15,25,0.88)',
+    borderWidth: 1,
+    borderColor:
+      'rgba(255,255,255,0.12)',
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 7,
   },
 
   paidBadgeText: {
-    fontSize: 8,
+    fontSize: 9,
     fontFamily: 'Cairo-Bold',
-    color: Colors.dark.text,
+    color: Colors.primary[300],
   },
 
   playOverlay: {
@@ -235,45 +228,47 @@ const styles = StyleSheet.create({
   },
 
   playCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.58)',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor:
+      'rgba(10,10,15,0.62)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.32)',
+    borderColor:
+      'rgba(255,255,255,0.38)',
   },
 
   bottomInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingBottom: 6,
+    paddingHorizontal: 9,
+    paddingBottom: 9,
   },
 
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 3,
   },
 
   ratingText: {
-    fontSize: 9,
-    fontFamily: 'Cairo-SemiBold',
+    fontSize: 10,
+    fontFamily: 'Cairo-Bold',
     color: Colors.dark.text,
   },
 
   episodeCount: {
-    fontSize: 8,
+    fontSize: 9,
     fontFamily: 'Cairo-Regular',
     color: Colors.dark.textSecondary,
   },
 
   title: {
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 13,
+    lineHeight: 18,
     fontFamily: 'Cairo-SemiBold',
     color: Colors.dark.text,
     paddingHorizontal: 2,
@@ -290,6 +285,7 @@ const styles = StyleSheet.create({
   placeholder: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.dark.surfaceLight,
+    backgroundColor:
+      Colors.dark.surfaceLight,
   },
 });
