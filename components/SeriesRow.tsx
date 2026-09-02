@@ -1,4 +1,11 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  useWindowDimensions,
+} from 'react-native';
+
 import { Colors } from '@/lib/theme';
 import { ChevronRight } from 'lucide-react-native';
 import type { Series } from '@/lib/types';
@@ -18,20 +25,47 @@ export function SeriesRow({
   onSeriesPress,
   onSeeAll,
 }: SeriesRowProps) {
+  const { width: screenWidth } = useWindowDimensions();
+
+  /*
+   * Responsive 3-column grid.
+   *
+   * The card automatically becomes smaller/larger
+   * depending on the phone screen width.
+   */
+
+  const horizontalPadding = 16;
+  const gap = 10;
+
+  const availableWidth =
+    screenWidth -
+    horizontalPadding * 2 -
+    gap * 2;
+
+  const cardWidth = Math.floor(
+    availableWidth / 3
+  );
+
   return (
     <View style={styles.container}>
+      {/* Section header */}
       <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title}>
+          {title}
+        </Text>
 
         {onSeeAll && (
           <TouchableOpacity
             onPress={onSeeAll}
             style={styles.seeAllButton}
+            activeOpacity={0.7}
           >
-            <Text style={styles.seeAllText}>See All</Text>
+            <Text style={styles.seeAllText}>
+              See All
+            </Text>
 
             <ChevronRight
-              size={16}
+              size={15}
               color={Colors.primary[400]}
               strokeWidth={2}
             />
@@ -39,58 +73,90 @@ export function SeriesRow({
         )}
       </View>
 
-      <FlatList
-        data={series}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <SeriesCard
-            series={item}
-            onPress={onSeriesPress}
-          />
-        )}
-      />
+      {/* Responsive 3-column grid */}
+      <View style={styles.grid}>
+        {series.map((item) => (
+          <View
+            key={item.id}
+            style={[
+              styles.gridItem,
+              {
+                width: cardWidth,
+              },
+            ]}
+          >
+            <SeriesCard
+              series={item}
+              onPress={onSeriesPress}
+              width={cardWidth}
+            />
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 8,
+    marginTop: 12,
+    marginBottom: 8,
   },
 
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+
     paddingHorizontal: 16,
-    marginBottom: 12,
+
+    marginBottom: 10,
   },
 
   title: {
     fontSize: 18,
+
     fontFamily: 'Cairo-Bold',
+
     color: Colors.dark.text,
+
     textAlign: 'left',
   },
 
   seeAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+
+    paddingVertical: 4,
+    paddingHorizontal: 2,
   },
 
   seeAllText: {
-    fontSize: 13,
+    fontSize: 12,
+
     fontFamily: 'Cairo-Regular',
+
     color: Colors.primary[400],
+
     textAlign: 'left',
   },
 
-  listContent: {
-    paddingHorizontal: 12,
-    gap: 12,
+  grid: {
+    flexDirection: 'row',
+
+    flexWrap: 'wrap',
+
+    paddingHorizontal: 16,
+
+    columnGap: 10,
+
+    rowGap: 16,
+
+    alignItems: 'flex-start',
+  },
+
+  gridItem: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
 });
