@@ -29,15 +29,7 @@ export function SeriesCard({
   onPress,
   width = 110,
 }: SeriesCardProps) {
-  /*
-   * Keep the poster ratio close to modern
-   * drama / streaming applications.
-   *
-   * Height is calculated from width.
-   */
-  const imageHeight = Math.round(
-    width * 1.42
-  );
+  const imageHeight = Math.round(width * 1.42);
 
   return (
     <TouchableOpacity
@@ -50,7 +42,6 @@ export function SeriesCard({
         },
       ]}
     >
-      {/* Poster */}
       <View
         style={[
           styles.imageContainer,
@@ -68,7 +59,6 @@ export function SeriesCard({
             imageStyle={styles.imageRadius}
             resizeMode="cover"
           >
-            {/* Bottom gradient */}
             <LinearGradient
               colors={[
                 'transparent',
@@ -77,13 +67,10 @@ export function SeriesCard({
               style={styles.gradient}
             />
 
-            {/* Premium / Free badge */}
             <View style={styles.badges}>
               {series.is_free ? (
                 <View style={styles.freeBadge}>
-                  <Text
-                    style={styles.freeBadgeText}
-                  >
+                  <Text style={styles.freeBadgeText}>
                     Free
                   </Text>
                 </View>
@@ -95,16 +82,13 @@ export function SeriesCard({
                     strokeWidth={2.5}
                   />
 
-                  <Text
-                    style={styles.paidBadgeText}
-                  >
+                  <Text style={styles.paidBadgeText}>
                     Premium
                   </Text>
                 </View>
               )}
             </View>
 
-            {/* Play button */}
             <View style={styles.playOverlay}>
               <View style={styles.playCircle}>
                 <Play
@@ -116,22 +100,16 @@ export function SeriesCard({
               </View>
             </View>
 
-            {/* Bottom information */}
             <View style={styles.bottomInfo}>
               <View style={styles.ratingRow}>
                 <Star
                   size={10}
                   color={Colors.warning[400]}
-                  strokeWidth={2}
                   fill={Colors.warning[400]}
                 />
 
-                <Text
-                  style={styles.ratingText}
-                >
-                  {Number(
-                    series.rating
-                  ).toFixed(1)}
+                <Text style={styles.ratingText}>
+                  {Number(series.rating).toFixed(1)}
                 </Text>
               </View>
 
@@ -153,13 +131,11 @@ export function SeriesCard({
             <Play
               size={24}
               color={Colors.dark.textMuted}
-              strokeWidth={2}
             />
           </View>
         )}
       </View>
 
-      {/* Title */}
       <Text
         style={styles.title}
         numberOfLines={2}
@@ -167,7 +143,6 @@ export function SeriesCard({
         {series.title}
       </Text>
 
-      {/* Status */}
       <Text
         style={styles.status}
         numberOfLines={1}
@@ -183,26 +158,19 @@ export function SeriesCard({
 const styles = StyleSheet.create({
   card: {
     gap: 4,
-
     borderRadius: 10,
-
     overflow: 'hidden',
   },
 
   imageContainer: {
     width: '100%',
-
     borderRadius: 10,
-
     overflow: 'hidden',
-
-    backgroundColor:
-      Colors.dark.surfaceLight,
+    backgroundColor: Colors.dark.surfaceLight,
   },
 
   image: {
     flex: 1,
-
     justifyContent: 'flex-end',
   },
 
@@ -212,76 +180,56 @@ const styles = StyleSheet.create({
 
   gradient: {
     position: 'absolute',
-
     left: 0,
     right: 0,
     bottom: 0,
-
     height: '45%',
   },
 
   badges: {
     position: 'absolute',
-
     top: 6,
     right: 6,
     left: 6,
-
     flexDirection: 'row',
-
     justifyContent: 'flex-end',
   },
 
   freeBadge: {
-    backgroundColor:
-      Colors.success[600],
-
+    backgroundColor: Colors.success[600],
     paddingHorizontal: 6,
     paddingVertical: 2,
-
     borderRadius: 5,
   },
 
   freeBadgeText: {
     fontSize: 8,
-
     fontFamily: 'Cairo-Bold',
-
     color: Colors.dark.text,
   },
 
   paidBadge: {
     flexDirection: 'row',
-
     alignItems: 'center',
-
     gap: 2,
-
-    backgroundColor:
-      'rgba(0,0,0,0.72)',
-
+    backgroundColor: 'rgba(0,0,0,0.72)',
     paddingHorizontal: 5,
     paddingVertical: 2,
-
     borderRadius: 5,
   },
 
   paidBadgeText: {
     fontSize: 8,
-
     fontFamily: 'Cairo-Bold',
-
     color: Colors.dark.text,
   },
 
   playOverlay: {
     position: 'absolute',
-
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -289,91 +237,59 @@ const styles = StyleSheet.create({
   playCircle: {
     width: 32,
     height: 32,
-
     borderRadius: 16,
-
-    backgroundColor:
-      'rgba(0,0,0,0.58)',
-
+    backgroundColor: 'rgba(0,0,0,0.58)',
     alignItems: 'center',
     justifyContent: 'center',
-
     borderWidth: 1,
-
-    borderColor:
-      'rgba(255,255,255,0.32)',
+    borderColor: 'rgba(255,255,255,0.32)',
   },
 
   bottomInfo: {
     flexDirection: 'row',
-
     justifyContent: 'space-between',
-
     alignItems: 'center',
-
     paddingHorizontal: 6,
-
     paddingBottom: 6,
   },
 
   ratingRow: {
     flexDirection: 'row',
-
     alignItems: 'center',
-
     gap: 2,
   },
 
   ratingText: {
     fontSize: 9,
-
     fontFamily: 'Cairo-SemiBold',
-
     color: Colors.dark.text,
   },
 
   episodeCount: {
     fontSize: 8,
-
     fontFamily: 'Cairo-Regular',
-
     color: Colors.dark.textSecondary,
   },
 
   title: {
     fontSize: 12,
-
     lineHeight: 16,
-
     fontFamily: 'Cairo-SemiBold',
-
     color: Colors.dark.text,
-
     paddingHorizontal: 2,
-
-    textAlign: 'left',
   },
 
   status: {
     fontSize: 10,
-
     lineHeight: 14,
-
     fontFamily: 'Cairo-Regular',
-
     color: Colors.dark.textMuted,
-
     paddingHorizontal: 2,
-
-    textAlign: 'left',
   },
 
   placeholder: {
     alignItems: 'center',
-
     justifyContent: 'center',
-
-    backgroundColor:
-      Colors.dark.surfaceLight,
+    backgroundColor: Colors.dark.surfaceLight,
   },
 });
