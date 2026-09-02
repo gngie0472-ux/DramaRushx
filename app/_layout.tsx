@@ -14,7 +14,9 @@ import { SplashScreen } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet, I18nManager } from 'react-native';
 import { Colors } from '@/lib/theme';
 
-I18nManager.forceRTL(true);
+// English layout: Left-to-right
+I18nManager.allowRTL(false);
+I18nManager.forceRTL(false);
 
 SplashScreen.preventAutoHideAsync();
 
@@ -37,7 +39,10 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary[500]} />
+        <ActivityIndicator
+          size="large"
+          color={Colors.primary[500]}
+        />
       </View>
     );
   }
@@ -45,15 +50,53 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="auth/login" options={{ headerShown: false }} />
-        <Stack.Screen name="auth/signup" options={{ headerShown: false }} />
-        <Stack.Screen name="auth/forgot-password" options={{ headerShown: false }} />
-        <Stack.Screen name="series/[id]" options={{ headerShown: false, animation: 'slide_from_left' }} />
-        <Stack.Screen name="player/[episodeId]" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="admin/index" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
+        <Stack.Screen
+          name="(tabs)"
+          options={{ headerShown: false }}
+        />
+
+        <Stack.Screen
+          name="auth/login"
+          options={{ headerShown: false }}
+        />
+
+        <Stack.Screen
+          name="auth/signup"
+          options={{ headerShown: false }}
+        />
+
+        <Stack.Screen
+          name="auth/forgot-password"
+          options={{ headerShown: false }}
+        />
+
+        <Stack.Screen
+          name="series/[id]"
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+
+        <Stack.Screen
+          name="player/[episodeId]"
+          options={{
+            headerShown: false,
+            animation: 'slide_from_bottom',
+          }}
+        />
+
+        <Stack.Screen
+          name="admin/index"
+          options={{ headerShown: false }}
+        />
+
+        <Stack.Screen
+          name="+not-found"
+          options={{ headerShown: false }}
+        />
       </Stack>
+
       <StatusBar style="light" />
     </AuthProvider>
   );
