@@ -18,29 +18,16 @@ export default function TabLayout() {
         tabBarActiveTintColor: Colors.primary[500],
         tabBarInactiveTintColor: Colors.dark.textMuted,
 
-        /*
-         * IMPORTANT:
-         * The old layout used:
-         * tabBarPosition: 'left'
-         *
-         * That created the permanent white/gray sidebar.
-         *
-         * We now use the normal Android bottom navigation.
-         */
+        // إزالة الشريط الجانبي الأبيض
         tabBarPosition: 'bottom',
 
         tabBarStyle: {
           backgroundColor: Colors.dark.surface,
           borderTopColor: Colors.dark.border,
           borderTopWidth: 1,
-
           height: Platform.OS === 'android' ? 62 : 82,
-
-          paddingBottom:
-            Platform.OS === 'android' ? 7 : 20,
-
+          paddingBottom: Platform.OS === 'android' ? 7 : 20,
           paddingTop: 6,
-
           elevation: 10,
         },
 
@@ -60,11 +47,7 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ size, color }) => (
-            <Home
-              size={size}
-              color={color}
-              strokeWidth={2}
-            />
+            <Home size={size} color={color} strokeWidth={2} />
           ),
         }}
       />
@@ -74,11 +57,7 @@ export default function TabLayout() {
         options={{
           title: 'Categories',
           tabBarIcon: ({ size, color }) => (
-            <LayoutGrid
-              size={size}
-              color={color}
-              strokeWidth={2}
-            />
+            <LayoutGrid size={size} color={color} strokeWidth={2} />
           ),
         }}
       />
@@ -88,11 +67,7 @@ export default function TabLayout() {
         options={{
           title: 'Search',
           tabBarIcon: ({ size, color }) => (
-            <Search
-              size={size}
-              color={color}
-              strokeWidth={2}
-            />
+            <Search size={size} color={color} strokeWidth={2} />
           ),
         }}
       />
@@ -102,11 +77,7 @@ export default function TabLayout() {
         options={{
           title: 'Favorites',
           tabBarIcon: ({ size, color }) => (
-            <Heart
-              size={size}
-              color={color}
-              strokeWidth={2}
-            />
+            <Heart size={size} color={color} strokeWidth={2} />
           ),
         }}
       />
@@ -116,11 +87,7 @@ export default function TabLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ size, color }) => (
-            <User
-              size={size}
-              color={color}
-              strokeWidth={2}
-            />
+            <User size={size} color={color} strokeWidth={2} />
           ),
         }}
       />
