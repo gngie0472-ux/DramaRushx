@@ -4,6 +4,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+
 import {
   ActivityIndicator,
   StyleSheet,
@@ -11,47 +12,179 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
-import { useVideoPlayer, VideoView } from 'expo-video';
+
+import {
+  router,
+  useLocalSearchParams,
+} from 'expo-router';
+
+import {
+  useVideoPlayer,
+  VideoView,
+} from 'expo-video';
+
+import { supabase } from '../../lib/supabase';
 
 export default function PlayerScreen() {
-  const { episodeId } =
-    useLocalSearchParams<{ episodeId: string }>();
+  const params =
+    useLocalSearchParams<{
+      episodeId?: string | string[];
+    }>();
+
+  const episodeId = Array.isArray(params.episodeId)
+    ? params.episodeId[0]
+    : params.episodeId;
 
   const mountedRef = useRef(true);
   const loadingVideoRef = useRef(false);
 
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [error, setError] = useState(false);
+  const [videoUrl, setVideoUrl] =
+    useState<string | null>(null);
+
+  const [isLoading, setIsLoading] =
+    useState(true);
+
+  const [isPlaying, setIsPlaying] =
+    useState(false);
+
+  const [error, setError] =
+    useState(false);
 
   /*
-   * IMPORTANT:
-   * هذا المتغير سيحتوي على رابط الفيديو الذي يرجعه
-   * نظامك الحالي.
+   * إنشاء Player بدون مصدر فيديو.
    *
-   * لا نضع URL ثابت هنا.
+   * الرابط الحقيقي سيتم الحصول عليه من:
+   *
+   * supabase.functions.invoke('get-video-url')
+   */
+  const player = useVideoPlayer(
+    null,
+    (videoPlayer) => {
+      try {
+        videoPlayer.loop = false;
+      } catch (err) {
+        console.warn(
+          'Player configuration failed:',
+          err
+        );
+      }
+    }
+  );
+
+  /*
+   * جلب الرابط الآمن الحقيقي من Supabase.
    */
   const fetchVideoUrl = useCallback(
-    async (id: string): Promise<string | null> => {
+    async (
+      id: string
+    ): Promise<string | null> => {
       try {
-        /*
-         * استخدم API الخاص بك هنا.
-         *
-         * إذا كان fetchVideoUrl موجودًا في ملف آخر عندك،
-         * استبدل محتوى هذه الدالة باستدعائه.
-         */
+        if (!id) {
+          console.error(
+            'fetchVideoUrl: missing episode id'
+          );
 
-        console.error(
-          'fetchVideoUrl is not configured in player screen:',
+          return null;
+        }
+
+        /*
+         * التأكد من وجود جلسة مستخدم.
+         */
+        const {
+          data: sessionData,
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error(
+            'fetchVideoUrl: session error:',
+            sessionError
+          );
+
+          return null;
+        }
+
+        const accessToken =
+          sessionData.session?.access_token;
+
+        if (!accessToken) {
+          console.error(
+            'fetchVideoUrl: no authenticated session'
+          );
+
+          return null;
+        }
+
+        console.log(
+          'fetchVideoUrl: requesting secure URL for:',
           id
         );
 
-        return null;
+        /*
+         * استدعاء Edge Function الموجودة فعليًا
+         * في مشروعك:
+         *
+         * supabase/functions/get-video-url/index.ts
+         */
+        const {
+          data,
+          error: functionError,
+        } =
+          await supabase.functions.invoke(
+            'get-video-url',
+            {
+              body: {
+                episodeId: id,
+              },
+              headers: {
+                Authorization:
+                  `Bearer ${accessToken}`,
+              },
+            }
+          );
+
+        if (functionError) {
+          console.error(
+            'fetchVideoUrl: Edge Function error:',
+            functionError
+          );
+
+          return null;
+        }
+
+        /*
+         * Edge Function ترجع:
+         *
+         * {
+         *   success: true,
+         *   episodeId: "...",
+         *   url: "...",
+         *   expiresIn: 300
+         * }
+         */
+        const url =
+          data?.url;
+
+        if (
+          !url ||
+          typeof url !== 'string'
+        ) {
+          console.error(
+            'fetchVideoUrl: no valid URL returned:',
+            data
+          );
+
+          return null;
+        }
+
+        console.log(
+          'fetchVideoUrl: secure URL received'
+        );
+
+        return url.trim();
       } catch (err) {
         console.error(
-          'fetchVideoUrl error:',
+          'fetchVideoUrl: unexpected error:',
           err
         );
 
@@ -62,22 +195,7 @@ export default function PlayerScreen() {
   );
 
   /*
-   * إنشاء Player بدون مصدر في البداية.
-   * هذا أكثر أمانًا من إنشاء player برابط قد لا يكون جاهزًا.
-   */
-  const player = useVideoPlayer(null, (player) => {
-    try {
-      player.loop = false;
-    } catch (err) {
-      console.warn(
-        'Player configuration failed:',
-        err
-      );
-    }
-  });
-
-  /*
-   * مراقبة دورة حياة الشاشة.
+   * دورة حياة الشاشة.
    */
   useEffect(() => {
     mountedRef.current = true;
@@ -86,11 +204,17 @@ export default function PlayerScreen() {
       mountedRef.current = false;
       loadingVideoRef.current = false;
 
+      /*
+       * نوقف الفيديو فقط.
+       *
+       * لا نستدعي release() يدويًا لأن
+       * useVideoPlayer يدير دورة حياة الـplayer.
+       */
       try {
         player.pause();
       } catch (err) {
         console.warn(
-          'Player cleanup pause failed:',
+          'Player cleanup failed:',
           err
         );
       }
@@ -98,7 +222,7 @@ export default function PlayerScreen() {
   }, [player]);
 
   /*
-   * تحميل الفيديو بطريقة آمنة.
+   * تحميل وتشغيل الفيديو.
    */
   const loadVideo = useCallback(
     async (id: string) => {
@@ -128,30 +252,41 @@ export default function PlayerScreen() {
 
       loadingVideoRef.current = true;
 
-      setIsLoading(true);
-      setError(false);
-      setIsPlaying(false);
+      if (mountedRef.current) {
+        setIsLoading(true);
+        setIsPlaying(false);
+        setError(false);
+        setVideoUrl(null);
+      }
 
       try {
+        /*
+         * ----------------------------------------
+         * 1. الحصول على الرابط الآمن
+         * ----------------------------------------
+         */
         console.log(
-          'loadVideo: requesting secure URL for:',
-          id
+          'loadVideo: requesting secure URL...'
         );
 
-        const url =
+        const secureUrl =
           await fetchVideoUrl(id);
 
         if (!mountedRef.current) {
+          console.log(
+            'loadVideo: screen unmounted after URL request'
+          );
+
           return false;
         }
 
         if (
-          !url ||
-          typeof url !== 'string' ||
-          !url.trim()
+          !secureUrl ||
+          typeof secureUrl !== 'string' ||
+          !secureUrl.trim()
         ) {
           console.error(
-            'loadVideo: invalid video URL'
+            'loadVideo: invalid secure URL'
           );
 
           setError(true);
@@ -160,14 +295,13 @@ export default function PlayerScreen() {
           return false;
         }
 
-        const cleanUrl = url.trim();
-
-        console.log(
-          'loadVideo: secure URL received'
-        );
+        const cleanUrl =
+          secureUrl.trim();
 
         /*
-         * إيقاف الفيديو القديم قبل تبديل المصدر.
+         * ----------------------------------------
+         * 2. إيقاف أي فيديو سابق
+         * ----------------------------------------
          */
         try {
           player.pause();
@@ -183,14 +317,33 @@ export default function PlayerScreen() {
         }
 
         /*
-         * لا نستدعي replaceAsync إلا والـscreen ما زالت
-         * موجودة.
+         * ----------------------------------------
+         * 3. إعطاء Android لحظة قبل تبديل المصدر
+         * ----------------------------------------
          */
-        try {
-          console.log(
-            'loadVideo: replacing source...'
-          );
+        await new Promise<void>(
+          (resolve) => {
+            setTimeout(
+              resolve,
+              100
+            );
+          }
+        );
 
+        if (!mountedRef.current) {
+          return false;
+        }
+
+        /*
+         * ----------------------------------------
+         * 4. تحميل الرابط داخل Player
+         * ----------------------------------------
+         */
+        console.log(
+          'loadVideo: loading secure video...'
+        );
+
+        try {
           await player.replaceAsync(
             cleanUrl
           );
@@ -203,6 +356,7 @@ export default function PlayerScreen() {
           if (mountedRef.current) {
             setError(true);
             setIsLoading(false);
+            setIsPlaying(false);
           }
 
           return false;
@@ -214,12 +368,22 @@ export default function PlayerScreen() {
 
         setVideoUrl(cleanUrl);
 
+        console.log(
+          'loadVideo: video source loaded'
+        );
+
         /*
-         * تأخير صغير لتجنب race condition على Android.
+         * ----------------------------------------
+         * 5. انتظار قصير قبل التشغيل
+         * ----------------------------------------
          */
         await new Promise<void>(
-          (resolve) =>
-            setTimeout(resolve, 150)
+          (resolve) => {
+            setTimeout(
+              resolve,
+              150
+            );
+          }
         );
 
         if (!mountedRef.current) {
@@ -227,7 +391,9 @@ export default function PlayerScreen() {
         }
 
         /*
-         * تشغيل الفيديو.
+         * ----------------------------------------
+         * 6. تشغيل الفيديو
+         * ----------------------------------------
          */
         try {
           player.play();
@@ -239,21 +405,23 @@ export default function PlayerScreen() {
 
           if (mountedRef.current) {
             setError(true);
-            setIsPlaying(false);
             setIsLoading(false);
+            setIsPlaying(false);
           }
 
           return false;
         }
 
-        if (mountedRef.current) {
-          setIsPlaying(true);
-          setIsLoading(false);
-          setError(false);
+        if (!mountedRef.current) {
+          return false;
         }
 
+        setIsPlaying(true);
+        setIsLoading(false);
+        setError(false);
+
         console.log(
-          'loadVideo: playback started'
+          'loadVideo: playback started successfully'
         );
 
         return true;
@@ -265,8 +433,8 @@ export default function PlayerScreen() {
 
         if (mountedRef.current) {
           setError(true);
-          setIsPlaying(false);
           setIsLoading(false);
+          setIsPlaying(false);
         }
 
         return false;
@@ -274,69 +442,125 @@ export default function PlayerScreen() {
         loadingVideoRef.current = false;
       }
     },
-    [fetchVideoUrl, player]
+    [
+      fetchVideoUrl,
+      player,
+    ]
   );
 
   /*
-   * تشغيل الحلقة تلقائيًا عند فتح الشاشة.
+   * --------------------------------------------
+   * تشغيل الحلقة عند فتح الشاشة
+   * --------------------------------------------
    */
   useEffect(() => {
     if (!episodeId) {
+      console.error(
+        'PlayerScreen: missing episodeId'
+      );
+
       setError(true);
       setIsLoading(false);
+
       return;
     }
 
     loadVideo(episodeId);
 
     return () => {
+      /*
+       * منع أي setState أو player operation
+       * بعد مغادرة الشاشة.
+       */
       mountedRef.current = false;
     };
-  }, [episodeId, loadVideo]);
+  }, [
+    episodeId,
+    loadVideo,
+  ]);
 
   /*
-   * شاشة خطأ بدون إغلاق التطبيق.
+   * --------------------------------------------
+   * شاشة الخطأ
+   * --------------------------------------------
    */
   if (error) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorTitle}>
-          تعذر تشغيل الفيديو
+      <View
+        style={styles.errorContainer}
+      >
+        <Text
+          style={styles.errorIcon}
+        >
+          ⚠️
         </Text>
 
-        <Text style={styles.errorText}>
-          حدث خطأ أثناء تحميل الحلقة.
-          يرجى المحاولة مرة أخرى.
+        <Text
+          style={styles.errorTitle}
+        >
+          تعذر تشغيل الحلقة
+        </Text>
+
+        <Text
+          style={styles.errorText}
+        >
+          حدث خطأ أثناء تحميل الفيديو.
+          تأكد من اتصال الإنترنت ثم حاول
+          مرة أخرى.
         </Text>
 
         <TouchableOpacity
           style={styles.retryButton}
           onPress={() => {
-            if (episodeId) {
-              loadVideo(episodeId);
+            if (!episodeId) {
+              return;
             }
+
+            /*
+             * السماح بإعادة المحاولة.
+             */
+            mountedRef.current = true;
+
+            loadVideo(
+              episodeId
+            );
           }}
         >
-          <Text style={styles.retryText}>
+          <Text
+            style={styles.retryText}
+          >
             إعادة المحاولة
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => {
+            router.back();
+          }}
         >
-          <Text style={styles.backText}>
-            العودة
+          <Text
+            style={styles.backText}
+          >
+            ← العودة
           </Text>
         </TouchableOpacity>
       </View>
     );
   }
 
+  /*
+   * --------------------------------------------
+   * شاشة الفيديو
+   * --------------------------------------------
+   */
   return (
-    <View style={styles.container}>
-      <View style={styles.videoContainer}>
+    <View
+      style={styles.container}
+    >
+      <View
+        style={styles.videoContainer}
+      >
         <VideoView
           player={player}
           style={styles.video}
@@ -346,47 +570,93 @@ export default function PlayerScreen() {
           allowsPictureInPicture
         />
 
+        /*
+         * Loading overlay
+         */
         {isLoading && (
-          <View style={styles.loadingOverlay}>
+          <View
+            style={
+              styles.loadingOverlay
+            }
+          >
             <ActivityIndicator
               size="large"
             />
 
-            <Text style={styles.loadingText}>
+            <Text
+              style={
+                styles.loadingText
+              }
+            >
               جاري تحميل الحلقة...
             </Text>
           </View>
         )}
 
+        /*
+         * زر تشغيل احتياطي
+         */
         {!isLoading &&
-          !isPlaying &&
-          videoUrl && (
+          videoUrl &&
+          !isPlaying && (
             <TouchableOpacity
-              style={styles.playOverlay}
+              style={
+                styles.playButton
+              }
               onPress={() => {
                 try {
+                  if (
+                    !mountedRef.current
+                  ) {
+                    return;
+                  }
+
                   player.play();
-                  setIsPlaying(true);
+
+                  setIsPlaying(
+                    true
+                  );
+
+                  setError(
+                    false
+                  );
                 } catch (err) {
                   console.error(
                     'Manual play failed:',
                     err
                   );
 
-                  setError(true);
+                  if (
+                    mountedRef.current
+                  ) {
+                    setError(
+                      true
+                    );
+                  }
                 }
               }}
             >
-              <Text style={styles.playIcon}>
+              <Text
+                style={
+                  styles.playIcon
+                }
+              >
                 ▶
               </Text>
             </TouchableOpacity>
           )}
       </View>
 
-      <View style={styles.bottomArea}>
+      /*
+       * زر العودة
+       */
+      <View
+        style={styles.bottomBar}
+      >
         <TouchableOpacity
-          style={styles.backButton}
+          style={
+            styles.backButton
+          }
           onPress={() => {
             try {
               player.pause();
@@ -400,7 +670,11 @@ export default function PlayerScreen() {
             router.back();
           }}
         >
-          <Text style={styles.backText}>
+          <Text
+            style={
+              styles.backText
+            }
+          >
             ← العودة
           </Text>
         </TouchableOpacity>
@@ -409,105 +683,121 @@ export default function PlayerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
+const styles =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#000',
+    },
 
-  videoContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    backgroundColor: '#000',
-  },
+    videoContainer: {
+      flex: 1,
+      backgroundColor: '#000',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
 
-  video: {
-    width: '100%',
-    height: '100%',
-  },
+    video: {
+      width: '100%',
+      height: '100%',
+    },
 
-  loadingOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.65)',
-  },
+    loadingOverlay: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor:
+        'rgba(0,0,0,0.70)',
+    },
 
-  loadingText: {
-    marginTop: 14,
-    color: '#fff',
-    fontSize: 16,
-  },
+    loadingText: {
+      marginTop: 16,
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '600',
+    },
 
-  playOverlay: {
-    position: 'absolute',
-    alignSelf: 'center',
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-  },
+    playButton: {
+      position: 'absolute',
+      width: 76,
+      height: 76,
+      borderRadius: 38,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor:
+        'rgba(255,255,255,0.92)',
+    },
 
-  playIcon: {
-    color: '#000',
-    fontSize: 28,
-    marginLeft: 4,
-  },
+    playIcon: {
+      color: '#000',
+      fontSize: 30,
+      marginLeft: 4,
+    },
 
-  bottomArea: {
-    padding: 16,
-    backgroundColor: '#000',
-  },
+    bottomBar: {
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      backgroundColor: '#000',
+    },
 
-  backButton: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: '#222',
-  },
+    backButton: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: 20,
+      paddingVertical: 11,
+      borderRadius: 10,
+      backgroundColor: '#222',
+    },
 
-  backText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+    backText: {
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '700',
+    },
 
-  errorTitle: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginTop: 120,
-  },
+    errorContainer: {
+      flex: 1,
+      backgroundColor: '#000',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 30,
+    },
 
-  errorText: {
-    color: '#aaa',
-    fontSize: 15,
-    textAlign: 'center',
-    marginTop: 12,
-    marginHorizontal: 30,
-    lineHeight: 24,
-  },
+    errorIcon: {
+      fontSize: 42,
+      marginBottom: 18,
+    },
 
-  retryButton: {
-    alignSelf: 'center',
-    marginTop: 25,
-    paddingHorizontal: 30,
-    paddingVertical: 13,
-    borderRadius: 10,
-    backgroundColor: '#7c3aed',
-  },
+    errorTitle: {
+      color: '#fff',
+      fontSize: 23,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
 
-  retryText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-});
+    errorText: {
+      color: '#aaa',
+      fontSize: 15,
+      lineHeight: 24,
+      textAlign: 'center',
+      marginTop: 12,
+      marginBottom: 25,
+    },
+
+    retryButton: {
+      paddingHorizontal: 32,
+      paddingVertical: 13,
+      borderRadius: 10,
+      backgroundColor: '#7c3aed',
+      marginBottom: 12,
+    },
+
+    retryText: {
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '800',
+    },
+  });
