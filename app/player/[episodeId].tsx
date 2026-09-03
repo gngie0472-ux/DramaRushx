@@ -31,7 +31,9 @@ export default function PlayerScreen() {
       episodeId?: string | string[];
     }>();
 
-  const episodeId = Array.isArray(params.episodeId)
+  const episodeId = Array.isArray(
+    params.episodeId
+  )
     ? params.episodeId[0]
     : params.episodeId;
 
@@ -51,11 +53,8 @@ export default function PlayerScreen() {
     useState(false);
 
   /*
-   * إنشاء Player بدون مصدر فيديو.
-   *
-   * الرابط الحقيقي سيتم الحصول عليه من:
-   *
-   * supabase.functions.invoke('get-video-url')
+   * Create the video player without an initial source.
+   * The secure URL is loaded later from Supabase.
    */
   const player = useVideoPlayer(
     null,
@@ -72,7 +71,19 @@ export default function PlayerScreen() {
   );
 
   /*
-   * جلب الرابط الآمن الحقيقي من Supabase.
+   * Get the secure video URL from Supabase.
+   *
+   * Flow:
+   *
+   * App
+   *   ↓
+   * get-video-url
+   *   ↓
+   * entitlement check
+   *   ↓
+   * private videos bucket
+   *   ↓
+   * temporary signed URL
    */
   const fetchVideoUrl = useCallback(
     async (
@@ -88,12 +99,13 @@ export default function PlayerScreen() {
         }
 
         /*
-         * التأكد من وجود جلسة مستخدم.
+         * Get the current authenticated session.
          */
         const {
           data: sessionData,
           error: sessionError,
-        } = await supabase.auth.getSession();
+        } =
+          await supabase.auth.getSession();
 
         if (sessionError) {
           console.error(
@@ -105,7 +117,8 @@ export default function PlayerScreen() {
         }
 
         const accessToken =
-          sessionData.session?.access_token;
+          sessionData.session
+            ?.access_token;
 
         if (!accessToken) {
           console.error(
@@ -121,10 +134,7 @@ export default function PlayerScreen() {
         );
 
         /*
-         * استدعاء Edge Function الموجودة فعليًا
-         * في مشروعك:
-         *
-         * supabase/functions/get-video-url/index.ts
+         * Call the existing Supabase Edge Function.
          */
         const {
           data,
@@ -153,7 +163,7 @@ export default function PlayerScreen() {
         }
 
         /*
-         * Edge Function ترجع:
+         * Expected response:
          *
          * {
          *   success: true,
@@ -162,15 +172,15 @@ export default function PlayerScreen() {
          *   expiresIn: 300
          * }
          */
-        const url =
-          data?.url;
+        const url = data?.url;
 
         if (
           !url ||
-          typeof url !== 'string'
+          typeof url !== 'string' ||
+          !url.trim()
         ) {
           console.error(
-            'fetchVideoUrl: no valid URL returned:',
+            'fetchVideoUrl: invalid URL returned:',
             data
           );
 
@@ -195,7 +205,7 @@ export default function PlayerScreen() {
   );
 
   /*
-   * دورة حياة الشاشة.
+   * Player lifecycle protection.
    */
   useEffect(() => {
     mountedRef.current = true;
@@ -205,10 +215,10 @@ export default function PlayerScreen() {
       loadingVideoRef.current = false;
 
       /*
-       * نوقف الفيديو فقط.
+       * Pause only.
        *
-       * لا نستدعي release() يدويًا لأن
-       * useVideoPlayer يدير دورة حياة الـplayer.
+       * useVideoPlayer manages the player lifecycle.
+       * We intentionally do not call release().
        */
       try {
         player.pause();
@@ -222,7 +232,7 @@ export default function PlayerScreen() {
   }, [player]);
 
   /*
-   * تحميل وتشغيل الفيديو.
+   * Load and start the video safely.
    */
   const loadVideo = useCallback(
     async (id: string) => {
@@ -244,7 +254,7 @@ export default function PlayerScreen() {
 
       if (!mountedRef.current) {
         console.log(
-          'loadVideo: screen not mounted'
+          'loadVideo: screen is not mounted'
         );
 
         return false;
@@ -252,18 +262,16 @@ export default function PlayerScreen() {
 
       loadingVideoRef.current = true;
 
-      if (mountedRef.current) {
-        setIsLoading(true);
-        setIsPlaying(false);
-        setError(false);
-        setVideoUrl(null);
-      }
+      setIsLoading(true);
+      setIsPlaying(false);
+      setError(false);
+      setVideoUrl(null);
 
       try {
         /*
-         * ----------------------------------------
-         * 1. الحصول على الرابط الآمن
-         * ----------------------------------------
+         * ========================================
+         * 1. Request secure URL
+         * ========================================
          */
         console.log(
           'loadVideo: requesting secure URL...'
@@ -299,9 +307,9 @@ export default function PlayerScreen() {
           secureUrl.trim();
 
         /*
-         * ----------------------------------------
-         * 2. إيقاف أي فيديو سابق
-         * ----------------------------------------
+         * ========================================
+         * 2. Pause previous video
+         * ========================================
          */
         try {
           player.pause();
@@ -317,9 +325,9 @@ export default function PlayerScreen() {
         }
 
         /*
-         * ----------------------------------------
-         * 3. إعطاء Android لحظة قبل تبديل المصدر
-         * ----------------------------------------
+         * ========================================
+         * 3. Small Android safety delay
+         * ========================================
          */
         await new Promise<void>(
           (resolve) => {
@@ -335,9 +343,9 @@ export default function PlayerScreen() {
         }
 
         /*
-         * ----------------------------------------
-         * 4. تحميل الرابط داخل Player
-         * ----------------------------------------
+         * ========================================
+         * 4. Replace video source
+         * ========================================
          */
         console.log(
           'loadVideo: loading secure video...'
@@ -369,13 +377,13 @@ export default function PlayerScreen() {
         setVideoUrl(cleanUrl);
 
         console.log(
-          'loadVideo: video source loaded'
+          'loadVideo: video source loaded successfully'
         );
 
         /*
-         * ----------------------------------------
-         * 5. انتظار قصير قبل التشغيل
-         * ----------------------------------------
+         * ========================================
+         * 5. Small delay before play
+         * ========================================
          */
         await new Promise<void>(
           (resolve) => {
@@ -391,9 +399,9 @@ export default function PlayerScreen() {
         }
 
         /*
-         * ----------------------------------------
-         * 6. تشغيل الفيديو
-         * ----------------------------------------
+         * ========================================
+         * 6. Start playback
+         * ========================================
          */
         try {
           player.play();
@@ -449,9 +457,9 @@ export default function PlayerScreen() {
   );
 
   /*
-   * --------------------------------------------
-   * تشغيل الحلقة عند فتح الشاشة
-   * --------------------------------------------
+   * ============================================
+   * Automatically load episode
+   * ============================================
    */
   useEffect(() => {
     if (!episodeId) {
@@ -468,10 +476,6 @@ export default function PlayerScreen() {
     loadVideo(episodeId);
 
     return () => {
-      /*
-       * منع أي setState أو player operation
-       * بعد مغادرة الشاشة.
-       */
       mountedRef.current = false;
     };
   }, [
@@ -480,9 +484,9 @@ export default function PlayerScreen() {
   ]);
 
   /*
-   * --------------------------------------------
-   * شاشة الخطأ
-   * --------------------------------------------
+   * ============================================
+   * Error screen
+   * ============================================
    */
   if (error) {
     return (
@@ -516,9 +520,12 @@ export default function PlayerScreen() {
               return;
             }
 
-            /*
-             * السماح بإعادة المحاولة.
-             */
+            if (
+              loadingVideoRef.current
+            ) {
+              return;
+            }
+
             mountedRef.current = true;
 
             loadVideo(
@@ -550,9 +557,9 @@ export default function PlayerScreen() {
   }
 
   /*
-   * --------------------------------------------
-   * شاشة الفيديو
-   * --------------------------------------------
+   * ============================================
+   * Video screen
+   * ============================================
    */
   return (
     <View
@@ -570,9 +577,7 @@ export default function PlayerScreen() {
           allowsPictureInPicture
         />
 
-        /*
-         * Loading overlay
-         */
+        {/* Loading overlay */}
         {isLoading && (
           <View
             style={
@@ -593,9 +598,7 @@ export default function PlayerScreen() {
           </View>
         )}
 
-        /*
-         * زر تشغيل احتياطي
-         */
+        {/* Fallback play button */}
         {!isLoading &&
           videoUrl &&
           !isPlaying && (
@@ -647,9 +650,7 @@ export default function PlayerScreen() {
           )}
       </View>
 
-      /*
-       * زر العودة
-       */
+      {/* Bottom navigation */}
       <View
         style={styles.bottomBar}
       >
@@ -682,6 +683,12 @@ export default function PlayerScreen() {
     </View>
   );
 }
+
+/*
+ * ==============================================
+ * Styles
+ * ==============================================
+ */
 
 const styles =
   StyleSheet.create({
