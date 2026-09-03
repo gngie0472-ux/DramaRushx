@@ -1,18 +1,12 @@
 const loadVideo = useCallback(
   async (id: string) => {
     if (!id) {
-      console.error(
-        'loadVideo: missing episode id'
-      );
-
+      console.error('loadVideo: missing episode id');
       return false;
     }
 
     if (loadingVideoRef.current) {
-      console.log(
-        'loadVideo: already loading'
-      );
-
+      console.log('loadVideo: already loading');
       return false;
     }
 
@@ -24,8 +18,7 @@ const loadVideo = useCallback(
         id
       );
 
-      const videoUrl =
-        await fetchVideoUrl(id);
+      const videoUrl = await fetchVideoUrl(id);
 
       if (!videoUrl) {
         console.error(
@@ -41,16 +34,15 @@ const loadVideo = useCallback(
       }
 
       console.log(
-        'loadVideo: secure URL received'
+        'loadVideo: secure URL received:',
+        videoUrl
       );
 
       if (!mountedRef.current) {
         return false;
       }
 
-      /*
-       * Stop the previous video.
-       */
+      // Stop previous video
       try {
         player.pause();
       } catch (pauseError) {
@@ -60,29 +52,18 @@ const loadVideo = useCallback(
         );
       }
 
-      /*
-       * Reset playback state.
-       */
-      if (mountedRef.current) {
-        setCurrentPosition(0);
-        setDuration(0);
-        setIsPlaying(false);
-        setError(false);
-      }
+      // Reset playback state
+      setCurrentPosition(0);
+      setDuration(0);
+      setIsPlaying(false);
+      setError(false);
 
-      /*
-       * Load the signed video URL.
-       *
-       * replaceAsync() is preferable here because
-       * it waits for the source replacement to finish.
-       */
       console.log(
         'loadVideo: loading video source...'
       );
 
-      await player.replaceAsync(
-        videoUrl
-      );
+      // Load the signed URL
+      await player.replaceAsync(videoUrl);
 
       if (!mountedRef.current) {
         return false;
@@ -92,11 +73,20 @@ const loadVideo = useCallback(
         'loadVideo: video source loaded'
       );
 
-      /*
-       * Start playback only after the
-       * source has been successfully loaded.
-       */
-      player.play();
+      // Start playback
+      try {
+        player.play();
+      } catch (playError) {
+        console.error(
+          'loadVideo: play failed:',
+          playError
+        );
+
+        setIsPlaying(false);
+        setError(true);
+
+        return false;
+      }
 
       if (mountedRef.current) {
         setIsPlaying(true);
