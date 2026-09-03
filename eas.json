@@ -4,7 +4,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "GRADLE_OPTS": "-Xmx8g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=true -Dorg.gradle.daemon=false"
+        "GRADLE_OPTS": "-Xmx8g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=false -Dorg.gradle.daemon=false"
       },
       "android": {
         "resourceClass": "large"
@@ -13,7 +13,7 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "GRADLE_OPTS": "-Xmx8g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=true -Dorg.gradle.daemon=false"
+        "GRADLE_OPTS": "-Xmx8g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=false -Dorg.gradle.daemon=false"
       },
       "android": {
         "resourceClass": "large",
@@ -23,7 +23,7 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "GRADLE_OPTS": "-Xmx8g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=true -Dorg.gradle.daemon=false"
+        "GRADLE_OPTS": "-Xmx8g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8 -Dorg.gradle.parallel=false -Dorg.gradle.daemon=false"
       },
       "android": {
         "resourceClass": "large"
