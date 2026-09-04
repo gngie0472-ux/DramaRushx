@@ -13,6 +13,8 @@ import {
   View,
 } from 'react-native';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import {
   router,
   useLocalSearchParams,
@@ -24,6 +26,29 @@ import {
 } from 'expo-video';
 
 import { supabase } from '../../lib/supabase';
+
+/*
+ * ============================================================
+ * Storage keys
+ * ============================================================
+ */
+
+const LAST_EPISODE_KEY =
+  '@dramarush_last_episode';
+
+const POSITION_KEY_PREFIX =
+  '@dramarush_video_position_';
+
+/*
+ * Save the current position every 5 seconds.
+ */
+const POSITION_SAVE_INTERVAL = 5000;
+
+/*
+ * Consider the episode completed when the user reaches
+ * approximately the last 10 seconds.
+ */
+const COMPLETION_THRESHOLD = 10;
 
 export default function PlayerScreen() {
   const params =
@@ -37,8 +62,25 @@ export default function PlayerScreen() {
     ? params.episodeId[0]
     : params.episodeId;
 
+  /*
+   * ============================================================
+   * Refs
+   * ============================================================
+   */
+
   const mountedRef = useRef(true);
-  const loadingVideoRef = useRef(false);
+
+  const loadingVideoRef =
+    useRef(false);
+
+  const savePositionRef =
+    useRef<(() => Promise<void>) | null>(null);
+
+  /*
+   * ============================================================
+   * State
+   * ============================================================
+   */
 
   const [videoUrl, setVideoUrl] =
     useState<string | null>(null);
@@ -53,9 +95,11 @@ export default function PlayerScreen() {
     useState(false);
 
   /*
-   * Create the video player without an initial source.
-   * The secure URL is loaded later from Supabase.
+   * ============================================================
+   * Video player
+   * ============================================================
    */
+
   const player = useVideoPlayer(
     null,
     (videoPlayer) => {
@@ -71,20 +115,11 @@ export default function PlayerScreen() {
   );
 
   /*
-   * Get the secure video URL from Supabase.
-   *
-   * Flow:
-   *
-   * App
-   *   ↓
-   * get-video-url
-   *   ↓
-   * entitlement check
-   *   ↓
-   * private videos bucket
-   *   ↓
-   * temporary signed URL
+   * ============================================================
+   * Get secure video URL from Supabase
+   * ============================================================
    */
+
   const fetchVideoUrl = useCallback(
     async (
       id: string
@@ -99,8 +134,9 @@ export default function PlayerScreen() {
         }
 
         /*
-         * Get the current authenticated session.
+         * Get current authenticated session.
          */
+
         const {
           data: sessionData,
           error: sessionError,
@@ -134,8 +170,9 @@ export default function PlayerScreen() {
         );
 
         /*
-         * Call the existing Supabase Edge Function.
+         * Existing Supabase Edge Function.
          */
+
         const {
           data,
           error: functionError,
@@ -146,6 +183,7 @@ export default function PlayerScreen() {
               body: {
                 episodeId: id,
               },
+
               headers: {
                 Authorization:
                   `Bearer ${accessToken}`,
@@ -162,16 +200,6 @@ export default function PlayerScreen() {
           return null;
         }
 
-        /*
-         * Expected response:
-         *
-         * {
-         *   success: true,
-         *   episodeId: "...",
-         *   url: "...",
-         *   expiresIn: 300
-         * }
-         */
         const url = data?.url;
 
         if (
@@ -205,8 +233,196 @@ export default function PlayerScreen() {
   );
 
   /*
-   * Player lifecycle protection.
+   * ============================================================
+   * Get saved position
+   * ============================================================
    */
+
+  const getSavedPosition =
+    useCallback(
+      async (
+        id: string
+      ): Promise<number> => {
+        try {
+          if (!id) {
+            return 0;
+          }
+
+          const key =
+            `${POSITION_KEY_PREFIX}${id}`;
+
+          const saved =
+            await AsyncStorage.getItem(
+              key
+            );
+
+          if (!saved) {
+            return 0;
+          }
+
+          const position =
+            Number(saved);
+
+          if (
+            !Number.isFinite(position) ||
+            position < 0
+          ) {
+            return 0;
+          }
+
+          console.log(
+            'getSavedPosition: restored position:',
+            position
+          );
+
+          return position;
+        } catch (err) {
+          console.warn(
+            'getSavedPosition: failed:',
+            err
+          );
+
+          return 0;
+        }
+      },
+      []
+    );
+
+  /*
+   * ============================================================
+   * Save current video position
+   * ============================================================
+   */
+
+  const saveCurrentPosition =
+    useCallback(
+      async () => {
+        try {
+          if (!episodeId) {
+            return;
+          }
+
+          if (!mountedRef.current) {
+            return;
+          }
+
+          const currentTime =
+            Number(player.currentTime || 0);
+
+          const duration =
+            Number(player.duration || 0);
+
+          if (
+            !Number.isFinite(currentTime) ||
+            currentTime < 0
+          ) {
+            return;
+          }
+
+          /*
+           * If the video is essentially finished,
+           * remove the saved position so the next
+           * viewing starts from the beginning.
+           */
+
+          if (
+            Number.isFinite(duration) &&
+            duration > 0 &&
+            currentTime >=
+              duration -
+                COMPLETION_THRESHOLD
+          ) {
+            const key =
+              `${POSITION_KEY_PREFIX}${episodeId}`;
+
+            await AsyncStorage.removeItem(
+              key
+            );
+
+            console.log(
+              'saveCurrentPosition: episode completed'
+            );
+
+            return;
+          }
+
+          const key =
+            `${POSITION_KEY_PREFIX}${episodeId}`;
+
+          await AsyncStorage.setItem(
+            key,
+            String(currentTime)
+          );
+
+          /*
+           * Also remember the last episode.
+           */
+
+          await AsyncStorage.setItem(
+            LAST_EPISODE_KEY,
+            episodeId
+          );
+
+          console.log(
+            'saveCurrentPosition: saved:',
+            currentTime
+          );
+        } catch (err) {
+          console.warn(
+            'saveCurrentPosition: failed:',
+            err
+          );
+        }
+      },
+      [episodeId, player]
+    );
+
+  /*
+   * Keep a ref to the latest save function.
+   * This allows cleanup to save the final position.
+   */
+
+  useEffect(() => {
+    savePositionRef.current =
+      saveCurrentPosition;
+  }, [saveCurrentPosition]);
+
+  /*
+   * ============================================================
+   * Save position periodically
+   * ============================================================
+   */
+
+  useEffect(() => {
+    if (!episodeId) {
+      return;
+    }
+
+    const interval =
+      setInterval(() => {
+        if (
+          mountedRef.current &&
+          isPlaying
+        ) {
+          saveCurrentPosition();
+        }
+      }, POSITION_SAVE_INTERVAL);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [
+    episodeId,
+    isPlaying,
+    saveCurrentPosition,
+  ]);
+
+  /*
+   * ============================================================
+   * Player lifecycle protection
+   * ============================================================
+   */
+
   useEffect(() => {
     mountedRef.current = true;
 
@@ -215,11 +431,29 @@ export default function PlayerScreen() {
       loadingVideoRef.current = false;
 
       /*
+       * Save the last position before leaving.
+       */
+
+      if (
+        savePositionRef.current
+      ) {
+        savePositionRef.current().catch(
+          (err) => {
+            console.warn(
+              'Final position save failed:',
+              err
+            );
+          }
+        );
+      }
+
+      /*
        * Pause only.
        *
-       * useVideoPlayer manages the player lifecycle.
-       * We intentionally do not call release().
+       * useVideoPlayer manages the player
+       * lifecycle.
        */
+
       try {
         player.pause();
       } catch (err) {
@@ -232,8 +466,11 @@ export default function PlayerScreen() {
   }, [player]);
 
   /*
-   * Load and start the video safely.
+   * ============================================================
+   * Load and start video
+   * ============================================================
    */
+
   const loadVideo = useCallback(
     async (id: string) => {
       if (!id) {
@@ -244,7 +481,9 @@ export default function PlayerScreen() {
         return false;
       }
 
-      if (loadingVideoRef.current) {
+      if (
+        loadingVideoRef.current
+      ) {
         console.log(
           'loadVideo: already loading'
         );
@@ -252,7 +491,9 @@ export default function PlayerScreen() {
         return false;
       }
 
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current
+      ) {
         console.log(
           'loadVideo: screen is not mounted'
         );
@@ -260,7 +501,8 @@ export default function PlayerScreen() {
         return false;
       }
 
-      loadingVideoRef.current = true;
+      loadingVideoRef.current =
+        true;
 
       setIsLoading(true);
       setIsPlaying(false);
@@ -269,10 +511,11 @@ export default function PlayerScreen() {
 
       try {
         /*
-         * ========================================
+         * ======================================================
          * 1. Request secure URL
-         * ========================================
+         * ======================================================
          */
+
         console.log(
           'loadVideo: requesting secure URL...'
         );
@@ -280,7 +523,9 @@ export default function PlayerScreen() {
         const secureUrl =
           await fetchVideoUrl(id);
 
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current
+        ) {
           console.log(
             'loadVideo: screen unmounted after URL request'
           );
@@ -307,10 +552,49 @@ export default function PlayerScreen() {
           secureUrl.trim();
 
         /*
-         * ========================================
-         * 2. Pause previous video
-         * ========================================
+         * ======================================================
+         * 2. Get saved position
+         * ======================================================
          */
+
+        const savedPosition =
+          await getSavedPosition(id);
+
+        if (
+          !mountedRef.current
+        ) {
+          return false;
+        }
+
+        console.log(
+          'loadVideo: saved position:',
+          savedPosition
+        );
+
+        /*
+         * ======================================================
+         * 3. Remember last episode
+         * ======================================================
+         */
+
+        try {
+          await AsyncStorage.setItem(
+            LAST_EPISODE_KEY,
+            id
+          );
+        } catch (storageError) {
+          console.warn(
+            'loadVideo: unable to save last episode:',
+            storageError
+          );
+        }
+
+        /*
+         * ======================================================
+         * 4. Pause previous video
+         * ======================================================
+         */
+
         try {
           player.pause();
         } catch (err) {
@@ -320,15 +604,18 @@ export default function PlayerScreen() {
           );
         }
 
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current
+        ) {
           return false;
         }
 
         /*
-         * ========================================
-         * 3. Small Android safety delay
-         * ========================================
+         * ======================================================
+         * 5. Small Android safety delay
+         * ======================================================
          */
+
         await new Promise<void>(
           (resolve) => {
             setTimeout(
@@ -338,15 +625,18 @@ export default function PlayerScreen() {
           }
         );
 
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current
+        ) {
           return false;
         }
 
         /*
-         * ========================================
-         * 4. Replace video source
-         * ========================================
+         * ======================================================
+         * 6. Replace video source
+         * ======================================================
          */
+
         console.log(
           'loadVideo: loading secure video...'
         );
@@ -361,7 +651,9 @@ export default function PlayerScreen() {
             replaceError
           );
 
-          if (mountedRef.current) {
+          if (
+            mountedRef.current
+          ) {
             setError(true);
             setIsLoading(false);
             setIsPlaying(false);
@@ -370,7 +662,9 @@ export default function PlayerScreen() {
           return false;
         }
 
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current
+        ) {
           return false;
         }
 
@@ -381,10 +675,55 @@ export default function PlayerScreen() {
         );
 
         /*
-         * ========================================
-         * 5. Small delay before play
-         * ========================================
+         * ======================================================
+         * 7. Restore previous position
+         * ======================================================
          */
+
+        if (
+          savedPosition > 0
+        ) {
+          try {
+            const duration =
+              Number(
+                player.duration || 0
+              );
+
+            /*
+             * Only seek if the saved position
+             * is valid for this video.
+             */
+
+            if (
+              !Number.isFinite(
+                duration
+              ) ||
+              duration <= 0 ||
+              savedPosition <
+                duration
+            ) {
+              player.currentTime =
+                savedPosition;
+
+              console.log(
+                'loadVideo: restored playback position:',
+                savedPosition
+              );
+            }
+          } catch (seekError) {
+            console.warn(
+              'loadVideo: failed to restore position:',
+              seekError
+            );
+          }
+        }
+
+        /*
+         * ======================================================
+         * 8. Small delay before play
+         * ======================================================
+         */
+
         await new Promise<void>(
           (resolve) => {
             setTimeout(
@@ -394,15 +733,18 @@ export default function PlayerScreen() {
           }
         );
 
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current
+        ) {
           return false;
         }
 
         /*
-         * ========================================
-         * 6. Start playback
-         * ========================================
+         * ======================================================
+         * 9. Start playback
+         * ======================================================
          */
+
         try {
           player.play();
         } catch (playError) {
@@ -411,7 +753,9 @@ export default function PlayerScreen() {
             playError
           );
 
-          if (mountedRef.current) {
+          if (
+            mountedRef.current
+          ) {
             setError(true);
             setIsLoading(false);
             setIsPlaying(false);
@@ -420,7 +764,9 @@ export default function PlayerScreen() {
           return false;
         }
 
-        if (!mountedRef.current) {
+        if (
+          !mountedRef.current
+        ) {
           return false;
         }
 
@@ -439,7 +785,9 @@ export default function PlayerScreen() {
           err
         );
 
-        if (mountedRef.current) {
+        if (
+          mountedRef.current
+        ) {
           setError(true);
           setIsLoading(false);
           setIsPlaying(false);
@@ -447,20 +795,23 @@ export default function PlayerScreen() {
 
         return false;
       } finally {
-        loadingVideoRef.current = false;
+        loadingVideoRef.current =
+          false;
       }
     },
     [
       fetchVideoUrl,
+      getSavedPosition,
       player,
     ]
   );
 
   /*
-   * ============================================
+   * ============================================================
    * Automatically load episode
-   * ============================================
+   * ============================================================
    */
+
   useEffect(() => {
     if (!episodeId) {
       console.error(
@@ -473,9 +824,15 @@ export default function PlayerScreen() {
       return;
     }
 
+    mountedRef.current = true;
+
     loadVideo(episodeId);
 
     return () => {
+      /*
+       * The main cleanup effect handles
+       * saving the final position.
+       */
       mountedRef.current = false;
     };
   }, [
@@ -484,29 +841,38 @@ export default function PlayerScreen() {
   ]);
 
   /*
-   * ============================================
+   * ============================================================
    * Error screen
-   * ============================================
+   * ============================================================
    */
+
   if (error) {
     return (
       <View
-        style={styles.errorContainer}
+        style={
+          styles.errorContainer
+        }
       >
         <Text
-          style={styles.errorIcon}
+          style={
+            styles.errorIcon
+          }
         >
           ⚠️
         </Text>
 
         <Text
-          style={styles.errorTitle}
+          style={
+            styles.errorTitle
+          }
         >
           تعذر تشغيل الحلقة
         </Text>
 
         <Text
-          style={styles.errorText}
+          style={
+            styles.errorText
+          }
         >
           حدث خطأ أثناء تحميل الفيديو.
           تأكد من اتصال الإنترنت ثم حاول
@@ -514,7 +880,9 @@ export default function PlayerScreen() {
         </Text>
 
         <TouchableOpacity
-          style={styles.retryButton}
+          style={
+            styles.retryButton
+          }
           onPress={() => {
             if (!episodeId) {
               return;
@@ -526,7 +894,8 @@ export default function PlayerScreen() {
               return;
             }
 
-            mountedRef.current = true;
+            mountedRef.current =
+              true;
 
             loadVideo(
               episodeId
@@ -534,20 +903,26 @@ export default function PlayerScreen() {
           }}
         >
           <Text
-            style={styles.retryText}
+            style={
+              styles.retryText
+            }
           >
             إعادة المحاولة
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.backButton}
+          style={
+            styles.backButton
+          }
           onPress={() => {
             router.back();
           }}
         >
           <Text
-            style={styles.backText}
+            style={
+              styles.backText
+            }
           >
             ← العودة
           </Text>
@@ -557,16 +932,19 @@ export default function PlayerScreen() {
   }
 
   /*
-   * ============================================
+   * ============================================================
    * Video screen
-   * ============================================
+   * ============================================================
    */
+
   return (
     <View
       style={styles.container}
     >
       <View
-        style={styles.videoContainer}
+        style={
+          styles.videoContainer
+        }
       >
         <VideoView
           player={player}
@@ -577,7 +955,10 @@ export default function PlayerScreen() {
           allowsPictureInPicture
         />
 
-        {/* Loading overlay */}
+        /*
+         * Loading overlay
+         */
+
         {isLoading && (
           <View
             style={
@@ -598,7 +979,10 @@ export default function PlayerScreen() {
           </View>
         )}
 
-        {/* Fallback play button */}
+        /*
+         * Fallback play button
+         */
+
         {!isLoading &&
           videoUrl &&
           !isPlaying && (
@@ -650,7 +1034,12 @@ export default function PlayerScreen() {
           )}
       </View>
 
-      {/* Bottom navigation */}
+      /*
+       * ========================================================
+       * Bottom navigation
+       * ========================================================
+       */
+
       <View
         style={styles.bottomBar}
       >
@@ -658,7 +1047,24 @@ export default function PlayerScreen() {
           style={
             styles.backButton
           }
-          onPress={() => {
+          onPress={async () => {
+            /*
+             * Save position before going back.
+             */
+
+            try {
+              await saveCurrentPosition();
+            } catch (err) {
+              console.warn(
+                'Save before back failed:',
+                err
+              );
+            }
+
+            /*
+             * Pause video.
+             */
+
             try {
               player.pause();
             } catch (err) {
@@ -685,9 +1091,9 @@ export default function PlayerScreen() {
 }
 
 /*
- * ==============================================
+ * ==============================================================
  * Styles
- * ==============================================
+ * ==============================================================
  */
 
 const styles =
